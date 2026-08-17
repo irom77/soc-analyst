@@ -1,0 +1,889 @@
+Command: uv run explain_case_analysis examples/splunk-soar.json --format soar --invoke
+Run date: 2026-08-17
+
+
+=== 1. Normalize the exported Case ===
+{
+  "case_id": "1042",
+  "title": "CASE-2026-0814-01: Cobalt Strike Activity on WS-FIN-09",
+  "description": "Multi-stage incident involving phishing delivery, encoded script execution, and C2 staging.",
+  "severity": "high",
+  "status": "open",
+  "created_at": "2026-08-14T18:22:10.452819Z",
+  "updated_at": "",
+  "tags": [
+    "c2_traffic",
+    "finance_subnet",
+    "apt_activity"
+  ],
+  "alerts": [
+    {
+      "title": "SOAR case artifacts",
+      "artifacts": [
+        {
+          "id": 6101,
+          "container_id": 1042,
+          "name": "C2 Beacon Domain Observable",
+          "label": "intelligence",
+          "type": "network",
+          "severity": "high",
+          "create_time": "2026-08-14T18:22:15.000Z",
+          "cef": {
+            "destinationDnsDomain": "stage2.malicious-domain.xyz",
+            "destinationAddress": "198.51.100.44",
+            "destinationPort": 443
+          },
+          "cef_types": {
+            "destinationDnsDomain": [
+              "domain"
+            ],
+            "destinationAddress": [
+              "ip"
+            ],
+            "destinationPort": [
+              "port"
+            ]
+          },
+          "tags": [
+            "ioc",
+            "c2"
+          ],
+          "notes": [
+            {
+              "id": 8101,
+              "artifact_id": 6101,
+              "title": "Threat Intelligence Enrichment",
+              "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+              "author": "automation_playbook",
+              "create_time": "2026-08-14T18:23:01.000Z"
+            }
+          ],
+          "comments": [
+            {
+              "id": 951,
+              "artifact_id": 6101,
+              "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+              "create_time": "2026-08-14T18:24:10.000Z"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 6101,
+      "container_id": 1042,
+      "name": "C2 Beacon Domain Observable",
+      "label": "intelligence",
+      "type": "network",
+      "severity": "high",
+      "create_time": "2026-08-14T18:22:15.000Z",
+      "cef": {
+        "destinationDnsDomain": "stage2.malicious-domain.xyz",
+        "destinationAddress": "198.51.100.44",
+        "destinationPort": 443
+      },
+      "cef_types": {
+        "destinationDnsDomain": [
+          "domain"
+        ],
+        "destinationAddress": [
+          "ip"
+        ],
+        "destinationPort": [
+          "port"
+        ]
+      },
+      "tags": [
+        "ioc",
+        "c2"
+      ],
+      "notes": [
+        {
+          "id": 8101,
+          "artifact_id": 6101,
+          "title": "Threat Intelligence Enrichment",
+          "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+          "author": "automation_playbook",
+          "create_time": "2026-08-14T18:23:01.000Z"
+        }
+      ],
+      "comments": [
+        {
+          "id": 951,
+          "artifact_id": 6101,
+          "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+          "create_time": "2026-08-14T18:24:10.000Z"
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "id": 901,
+      "container_id": 1042,
+      "user_id": 14,
+      "comment": "Host network isolation approved by SOC Lead.",
+      "create_time": "2026-08-14T18:25:30.000Z"
+    }
+  ],
+  "timeline": [],
+  "source": "soar",
+  "source_data": {
+    "id": 1042,
+    "name": "CASE-2026-0814-01: Cobalt Strike Activity on WS-FIN-09",
+    "label": "incident",
+    "container_type": "case",
+    "status": "open",
+    "severity": "high",
+    "sensitivity": "amber",
+    "stage_name": "Containment & Eradication",
+    "owner_name": "analyst_jdoe",
+    "owner_id": 14,
+    "parent_container": null,
+    "description": "Multi-stage incident involving phishing delivery, encoded script execution, and C2 staging.",
+    "create_time": "2026-08-14T18:22:10.452819Z",
+    "tags": [
+      "c2_traffic",
+      "finance_subnet",
+      "apt_activity"
+    ],
+    "custom_fields": {
+      "mitre_tactic": "TA0011 - Command and Control",
+      "incident_lead": "analyst_jdoe",
+      "escalation_approved": true
+    },
+    "notes": [
+      {
+        "id": 401,
+        "container_id": 1042,
+        "title": "Incident Summary & Assessment",
+        "content": "Host WS-FIN-09 exhibited beaconing behavior after opening an attachment. Multiple child events merged into this parent case.",
+        "author": "analyst_jdoe",
+        "create_time": "2026-08-14T18:35:00.120Z",
+        "phase": "Triage"
+      }
+    ],
+    "comments": [
+      {
+        "id": 901,
+        "container_id": 1042,
+        "user_id": 14,
+        "comment": "Host network isolation approved by SOC Lead.",
+        "create_time": "2026-08-14T18:25:30.000Z"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 6101,
+        "container_id": 1042,
+        "name": "C2 Beacon Domain Observable",
+        "label": "intelligence",
+        "type": "network",
+        "severity": "high",
+        "create_time": "2026-08-14T18:22:15.000Z",
+        "cef": {
+          "destinationDnsDomain": "stage2.malicious-domain.xyz",
+          "destinationAddress": "198.51.100.44",
+          "destinationPort": 443
+        },
+        "cef_types": {
+          "destinationDnsDomain": [
+            "domain"
+          ],
+          "destinationAddress": [
+            "ip"
+          ],
+          "destinationPort": [
+            "port"
+          ]
+        },
+        "tags": [
+          "ioc",
+          "c2"
+        ],
+        "notes": [
+          {
+            "id": 8101,
+            "artifact_id": 6101,
+            "title": "Threat Intelligence Enrichment",
+            "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+            "author": "automation_playbook",
+            "create_time": "2026-08-14T18:23:01.000Z"
+          }
+        ],
+        "comments": [
+          {
+            "id": 951,
+            "artifact_id": 6101,
+            "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+            "create_time": "2026-08-14T18:24:10.000Z"
+          }
+        ]
+      }
+    ],
+    "child_containers": [
+      {
+        "id": 1039,
+        "name": "Splunk Notable: Suspicious Execution via Phishing Attachment",
+        "label": "notable_event",
+        "container_type": "default",
+        "parent_container": 1042,
+        "status": "closed",
+        "close_reason": "Promoted to Case 1042",
+        "severity": "high",
+        "source_data_identifier": "es_notable_78a10f9b-11c2",
+        "create_time": "2026-08-14T18:15:02.000Z",
+        "notes": [
+          {
+            "id": 402,
+            "container_id": 1039,
+            "title": "Initial Triage Findings",
+            "content": "Alert triggered via Splunk ES correlation search for suspicious office child process.",
+            "author": "analyst_jdoe",
+            "create_time": "2026-08-14T18:18:00.000Z"
+          }
+        ],
+        "artifacts": [
+          {
+            "id": 6088,
+            "container_id": 1039,
+            "name": "Endpoint Process Execution",
+            "label": "endpoint",
+            "type": "process",
+            "severity": "high",
+            "cef": {
+              "sourceHostName": "WS-FIN-09",
+              "sourceAddress": "10.20.4.115",
+              "processName": "powershell.exe",
+              "processCommandLine": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+              "parentProcessName": "excel.exe"
+            },
+            "cef_types": {
+              "sourceHostName": [
+                "host_name"
+              ],
+              "sourceAddress": [
+                "ip"
+              ],
+              "processName": [
+                "process_name"
+              ]
+            },
+            "tags": [
+              "sysmon",
+              "encoded_command"
+            ],
+            "notes": [
+              {
+                "id": 8092,
+                "artifact_id": 6088,
+                "title": "Base64 Deobfuscation Analysis",
+                "content": "Decoded payload attempts an IEX Net.WebClient download from remote stage2 domain.",
+                "author": "analyst_jdoe",
+                "create_time": "2026-08-14T18:20:45.000Z"
+              }
+            ],
+            "comments": [
+              {
+                "id": 948,
+                "artifact_id": 6088,
+                "comment": "Parent PID confirmed as 4812 (Microsoft Excel).",
+                "create_time": "2026-08-14T18:21:00.000Z"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 1040,
+        "name": "Firewall Alert: Outbound Beacon Traffic to Untrusted Subnet",
+        "label": "network_alert",
+        "container_type": "default",
+        "parent_container": 1042,
+        "status": "closed",
+        "close_reason": "Promoted to Case 1042",
+        "severity": "medium",
+        "source_data_identifier": "pan_threat_991823a",
+        "create_time": "2026-08-14T18:16:30.000Z",
+        "notes": [],
+        "artifacts": [
+          {
+            "id": 6095,
+            "container_id": 1040,
+            "name": "Firewall Outbound Session",
+            "label": "network",
+            "type": "traffic",
+            "severity": "medium",
+            "cef": {
+              "sourceAddress": "10.20.4.115",
+              "destinationAddress": "198.51.100.44",
+              "destinationPort": 443,
+              "transportProtocol": "tcp",
+              "bytesOut": 4820,
+              "bytesIn": 104520
+            },
+            "cef_types": {
+              "sourceAddress": [
+                "ip"
+              ],
+              "destinationAddress": [
+                "ip"
+              ],
+              "destinationPort": [
+                "port"
+              ]
+            },
+            "tags": [
+              "firewall",
+              "ssl_outbound"
+            ],
+            "notes": [
+              {
+                "id": 8099,
+                "artifact_id": 6095,
+                "title": "Session Duration & Flow Analysis",
+                "content": "Persistent TLS session lasting 450s with periodic 30-second interval pulses.",
+                "author": "automation_playbook",
+                "create_time": "2026-08-14T18:19:12.000Z"
+              }
+            ],
+            "comments": []
+          }
+        ]
+      }
+    ]
+  }
+}
+
+=== 2. Add supplied Knowledge context ===
+No Knowledge file supplied; the standalone analyzer does not query a database.
+[]
+
+=== 3. Build the structured investigation request ===
+SystemMessage:
+You are a senior SOC and DFIR incident investigation analyst. Analyze the supplied canonical Case JSON and return an InvestigationReport matching the requested schema.
+
+Use only evidence contained in `case`, optional `knowledge.records`, and optional `user_input`. Do not invent facts. Clearly distinguish observed facts, grounded inferences, and unknowns. Deduplicate repeated alerts. Re-evaluate source severity rather than copying it automatically.
+
+Use verdict values such as `True Positive`, `Suspicious`, `False Positive`, `Benign`, or `Insufficient Data`. Lower confidence and list concrete unknowns when evidence is incomplete. Include only supported attack stages, traceable evidence, useful IOCs, directly related assets, and specific remediation actions.
+
+The `case.source_data` field preserves the original platform export. Use it when the normalized fields omit relevant detail, but do not assume source-specific fields have universal meanings.
+
+Keep results concise and deduplicated. Maximum list sizes: affected assets 5, evidence findings 5, attack-chain steps 6, timeline events 8, IOCs 10, remediations 6, and unknowns 5. Empty lists are preferable to fabricated content.
+
+
+HumanMessage (JSON):
+{
+  "case": {
+    "case_id": "1042",
+    "title": "CASE-2026-0814-01: Cobalt Strike Activity on WS-FIN-09",
+    "description": "Multi-stage incident involving phishing delivery, encoded script execution, and C2 staging.",
+    "severity": "high",
+    "status": "open",
+    "created_at": "2026-08-14T18:22:10.452819Z",
+    "updated_at": "",
+    "tags": [
+      "c2_traffic",
+      "finance_subnet",
+      "apt_activity"
+    ],
+    "alerts": [
+      {
+        "title": "SOAR case artifacts",
+        "artifacts": [
+          {
+            "id": 6101,
+            "container_id": 1042,
+            "name": "C2 Beacon Domain Observable",
+            "label": "intelligence",
+            "type": "network",
+            "severity": "high",
+            "create_time": "2026-08-14T18:22:15.000Z",
+            "cef": {
+              "destinationDnsDomain": "stage2.malicious-domain.xyz",
+              "destinationAddress": "198.51.100.44",
+              "destinationPort": 443
+            },
+            "cef_types": {
+              "destinationDnsDomain": [
+                "domain"
+              ],
+              "destinationAddress": [
+                "ip"
+              ],
+              "destinationPort": [
+                "port"
+              ]
+            },
+            "tags": [
+              "ioc",
+              "c2"
+            ],
+            "notes": [
+              {
+                "id": 8101,
+                "artifact_id": 6101,
+                "title": "Threat Intelligence Enrichment",
+                "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+                "author": "automation_playbook",
+                "create_time": "2026-08-14T18:23:01.000Z"
+              }
+            ],
+            "comments": [
+              {
+                "id": 951,
+                "artifact_id": 6101,
+                "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+                "create_time": "2026-08-14T18:24:10.000Z"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 6101,
+        "container_id": 1042,
+        "name": "C2 Beacon Domain Observable",
+        "label": "intelligence",
+        "type": "network",
+        "severity": "high",
+        "create_time": "2026-08-14T18:22:15.000Z",
+        "cef": {
+          "destinationDnsDomain": "stage2.malicious-domain.xyz",
+          "destinationAddress": "198.51.100.44",
+          "destinationPort": 443
+        },
+        "cef_types": {
+          "destinationDnsDomain": [
+            "domain"
+          ],
+          "destinationAddress": [
+            "ip"
+          ],
+          "destinationPort": [
+            "port"
+          ]
+        },
+        "tags": [
+          "ioc",
+          "c2"
+        ],
+        "notes": [
+          {
+            "id": 8101,
+            "artifact_id": 6101,
+            "title": "Threat Intelligence Enrichment",
+            "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+            "author": "automation_playbook",
+            "create_time": "2026-08-14T18:23:01.000Z"
+          }
+        ],
+        "comments": [
+          {
+            "id": 951,
+            "artifact_id": 6101,
+            "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+            "create_time": "2026-08-14T18:24:10.000Z"
+          }
+        ]
+      }
+    ],
+    "comments": [
+      {
+        "id": 901,
+        "container_id": 1042,
+        "user_id": 14,
+        "comment": "Host network isolation approved by SOC Lead.",
+        "create_time": "2026-08-14T18:25:30.000Z"
+      }
+    ],
+    "timeline": [],
+    "source": "soar",
+    "source_data": {
+      "id": 1042,
+      "name": "CASE-2026-0814-01: Cobalt Strike Activity on WS-FIN-09",
+      "label": "incident",
+      "container_type": "case",
+      "status": "open",
+      "severity": "high",
+      "sensitivity": "amber",
+      "stage_name": "Containment & Eradication",
+      "owner_name": "analyst_jdoe",
+      "owner_id": 14,
+      "parent_container": null,
+      "description": "Multi-stage incident involving phishing delivery, encoded script execution, and C2 staging.",
+      "create_time": "2026-08-14T18:22:10.452819Z",
+      "tags": [
+        "c2_traffic",
+        "finance_subnet",
+        "apt_activity"
+      ],
+      "custom_fields": {
+        "mitre_tactic": "TA0011 - Command and Control",
+        "incident_lead": "analyst_jdoe",
+        "escalation_approved": true
+      },
+      "notes": [
+        {
+          "id": 401,
+          "container_id": 1042,
+          "title": "Incident Summary & Assessment",
+          "content": "Host WS-FIN-09 exhibited beaconing behavior after opening an attachment. Multiple child events merged into this parent case.",
+          "author": "analyst_jdoe",
+          "create_time": "2026-08-14T18:35:00.120Z",
+          "phase": "Triage"
+        }
+      ],
+      "comments": [
+        {
+          "id": 901,
+          "container_id": 1042,
+          "user_id": 14,
+          "comment": "Host network isolation approved by SOC Lead.",
+          "create_time": "2026-08-14T18:25:30.000Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 6101,
+          "container_id": 1042,
+          "name": "C2 Beacon Domain Observable",
+          "label": "intelligence",
+          "type": "network",
+          "severity": "high",
+          "create_time": "2026-08-14T18:22:15.000Z",
+          "cef": {
+            "destinationDnsDomain": "stage2.malicious-domain.xyz",
+            "destinationAddress": "198.51.100.44",
+            "destinationPort": 443
+          },
+          "cef_types": {
+            "destinationDnsDomain": [
+              "domain"
+            ],
+            "destinationAddress": [
+              "ip"
+            ],
+            "destinationPort": [
+              "port"
+            ]
+          },
+          "tags": [
+            "ioc",
+            "c2"
+          ],
+          "notes": [
+            {
+              "id": 8101,
+              "artifact_id": 6101,
+              "title": "Threat Intelligence Enrichment",
+              "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+              "author": "automation_playbook",
+              "create_time": "2026-08-14T18:23:01.000Z"
+            }
+          ],
+          "comments": [
+            {
+              "id": 951,
+              "artifact_id": 6101,
+              "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+              "create_time": "2026-08-14T18:24:10.000Z"
+            }
+          ]
+        }
+      ],
+      "child_containers": [
+        {
+          "id": 1039,
+          "name": "Splunk Notable: Suspicious Execution via Phishing Attachment",
+          "label": "notable_event",
+          "container_type": "default",
+          "parent_container": 1042,
+          "status": "closed",
+          "close_reason": "Promoted to Case 1042",
+          "severity": "high",
+          "source_data_identifier": "es_notable_78a10f9b-11c2",
+          "create_time": "2026-08-14T18:15:02.000Z",
+          "notes": [
+            {
+              "id": 402,
+              "container_id": 1039,
+              "title": "Initial Triage Findings",
+              "content": "Alert triggered via Splunk ES correlation search for suspicious office child process.",
+              "author": "analyst_jdoe",
+              "create_time": "2026-08-14T18:18:00.000Z"
+            }
+          ],
+          "artifacts": [
+            {
+              "id": 6088,
+              "container_id": 1039,
+              "name": "Endpoint Process Execution",
+              "label": "endpoint",
+              "type": "process",
+              "severity": "high",
+              "cef": {
+                "sourceHostName": "WS-FIN-09",
+                "sourceAddress": "10.20.4.115",
+                "processName": "powershell.exe",
+                "processCommandLine": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+                "parentProcessName": "excel.exe"
+              },
+              "cef_types": {
+                "sourceHostName": [
+                  "host_name"
+                ],
+                "sourceAddress": [
+                  "ip"
+                ],
+                "processName": [
+                  "process_name"
+                ]
+              },
+              "tags": [
+                "sysmon",
+                "encoded_command"
+              ],
+              "notes": [
+                {
+                  "id": 8092,
+                  "artifact_id": 6088,
+                  "title": "Base64 Deobfuscation Analysis",
+                  "content": "Decoded payload attempts an IEX Net.WebClient download from remote stage2 domain.",
+                  "author": "analyst_jdoe",
+                  "create_time": "2026-08-14T18:20:45.000Z"
+                }
+              ],
+              "comments": [
+                {
+                  "id": 948,
+                  "artifact_id": 6088,
+                  "comment": "Parent PID confirmed as 4812 (Microsoft Excel).",
+                  "create_time": "2026-08-14T18:21:00.000Z"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 1040,
+          "name": "Firewall Alert: Outbound Beacon Traffic to Untrusted Subnet",
+          "label": "network_alert",
+          "container_type": "default",
+          "parent_container": 1042,
+          "status": "closed",
+          "close_reason": "Promoted to Case 1042",
+          "severity": "medium",
+          "source_data_identifier": "pan_threat_991823a",
+          "create_time": "2026-08-14T18:16:30.000Z",
+          "notes": [],
+          "artifacts": [
+            {
+              "id": 6095,
+              "container_id": 1040,
+              "name": "Firewall Outbound Session",
+              "label": "network",
+              "type": "traffic",
+              "severity": "medium",
+              "cef": {
+                "sourceAddress": "10.20.4.115",
+                "destinationAddress": "198.51.100.44",
+                "destinationPort": 443,
+                "transportProtocol": "tcp",
+                "bytesOut": 4820,
+                "bytesIn": 104520
+              },
+              "cef_types": {
+                "sourceAddress": [
+                  "ip"
+                ],
+                "destinationAddress": [
+                  "ip"
+                ],
+                "destinationPort": [
+                  "port"
+                ]
+              },
+              "tags": [
+                "firewall",
+                "ssl_outbound"
+              ],
+              "notes": [
+                {
+                  "id": 8099,
+                  "artifact_id": 6095,
+                  "title": "Session Duration & Flow Analysis",
+                  "content": "Persistent TLS session lasting 450s with periodic 30-second interval pulses.",
+                  "author": "automation_playbook",
+                  "create_time": "2026-08-14T18:19:12.000Z"
+                }
+              ],
+              "comments": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "knowledge": {
+    "records": []
+  }
+}
+
+=== 4. Invoke the LLM for an InvestigationReport ===
+{
+  "verdict": "True Positive",
+  "severity": "Critical",
+  "impact": "High",
+  "priority": "Critical",
+  "confidence": "High",
+  "digest": "A finance workstation (WS-FIN-09) was compromised via a phishing attachment, leading to the execution of an encoded PowerShell script. This script established a Cobalt Strike C2 beacon to a known malicious domain, indicating active adversary control and potential for further compromise.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "WS-FIN-09"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.20.4.115"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Suspicious Process Execution",
+      "finding_type": "Endpoint Activity",
+      "subject": "WS-FIN-09",
+      "evidence": "Microsoft Excel (excel.exe) spawned a hidden and encoded PowerShell process (powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>).",
+      "conclusion": "This indicates initial execution of a malicious script, likely from a phishing attachment."
+    },
+    {
+      "title": "Encoded PowerShell Payload",
+      "finding_type": "Code Analysis",
+      "subject": "powershell.exe",
+      "evidence": "The Base64 encoded command was deobfuscated, revealing an attempt to download a payload via IEX Net.WebClient from a remote stage2 domain.",
+      "conclusion": "The PowerShell script is a dropper or downloader for a secondary payload."
+    },
+    {
+      "title": "Outbound C2 Beaconing",
+      "finding_type": "Network Traffic",
+      "subject": "10.20.4.115",
+      "evidence": "Persistent TLS session lasting 450s with periodic 30-second interval pulses from WS-FIN-09 (10.20.4.115) to 198.51.100.44:443.",
+      "conclusion": "This network behavior is characteristic of Command and Control (C2) beaconing, specifically Cobalt Strike."
+    },
+    {
+      "title": "Malicious C2 Domain Identified",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "The domain 'stage2.malicious-domain.xyz' resolved via Fast Flux DNS, has a malicious reputation score (89/100), and matches a US-CERT advisory bulletin.",
+      "conclusion": "The C2 infrastructure is confirmed to be malicious and associated with known threat activity."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Phishing: A user on WS-FIN-09 opened a malicious attachment, leading to the initial compromise."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "Command and Scripting Interpreter: An encoded PowerShell script was executed by excel.exe, likely to download and execute further stages."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Standard Application Layer Protocol: A persistent TLS session was established to a malicious domain, indicative of Cobalt Strike C2 beaconing."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:15:02.000Z",
+      "attack_behavior": "Suspicious process execution (excel.exe spawning powershell.exe).",
+      "evidence_field": "Splunk Notable: Suspicious Execution via Phishing Attachment"
+    },
+    {
+      "timestamp": "2026-08-14T18:16:30.000Z",
+      "attack_behavior": "Outbound beacon traffic detected to untrusted subnet.",
+      "evidence_field": "Firewall Alert: Outbound Beacon Traffic"
+    },
+    {
+      "timestamp": "2026-08-14T18:20:45.000Z",
+      "attack_behavior": "Encoded PowerShell payload deobfuscated, revealing download attempt.",
+      "evidence_field": "Base64 Deobfuscation Analysis note on Endpoint Process Execution artifact"
+    },
+    {
+      "timestamp": "2026-08-14T18:22:15.000Z",
+      "attack_behavior": "Malicious C2 beacon domain observable created.",
+      "evidence_field": "C2 Beacon Domain Observable artifact"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "Threat intelligence enrichment confirms malicious domain reputation.",
+      "evidence_field": "Threat Intelligence Enrichment note on C2 Beacon Domain Observable artifact"
+    },
+    {
+      "timestamp": "2026-08-14T18:25:30.000Z",
+      "attack_behavior": "Host network isolation approved.",
+      "evidence_field": "Case comment"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "Cobalt Strike C2 beacon domain, resolved via Fast Flux DNS, confirmed malicious by TI and US-CERT."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "198.51.100.44",
+      "context": "Destination IP address for Cobalt Strike C2 beaconing."
+    },
+    {
+      "indicator_type": "Command Line",
+      "value": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+      "context": "Encoded PowerShell command used for initial payload execution and download."
+    },
+    {
+      "indicator_type": "Port",
+      "value": "443",
+      "context": "Destination port for C2 communication, commonly used to blend with legitimate TLS traffic."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Isolate WS-FIN-09 from the network immediately to prevent further lateral movement or data exfiltration.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Perform a full forensic analysis on WS-FIN-09, remove all detected malware, and reimage the system to a trusted state.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Network Blocking",
+      "description": "Block the malicious domain 'stage2.malicious-domain.xyz' and IP address '198.51.100.44' at all network perimeter devices (firewalls, proxies, DNS resolvers).",
+      "priority": "High"
+    },
+    {
+      "action_type": "Detection Improvement",
+      "description": "Update EDR and SIEM rules to detect similar encoded PowerShell commands, suspicious parent-child process relationships (e.g., Office apps spawning PowerShell), and Cobalt Strike C2 beaconing patterns.",
+      "priority": "Medium"
+    },
+    {
+      "action_type": "User Awareness Training",
+      "description": "Conduct targeted phishing awareness training for the user of WS-FIN-09 and the finance department, emphasizing the risks of opening suspicious attachments.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The specific details of the initial phishing email (sender, subject, full attachment name) are not provided.",
+    "The full decoded content of the PowerShell payload beyond its download intent is not available.",
+    "The identity of the user who opened the malicious attachment is not explicitly stated.",
+    "The full extent of the compromise, including potential lateral movement or data exfiltration, is yet to be determined."
+  ]
+}
+
+=== 5. Stop without writing to a source platform ===
+The standalone command does not update a Case, database, or worker job.

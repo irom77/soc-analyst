@@ -178,6 +178,62 @@ The canonical structure prevents prompt-building logic from depending on source-
 
 The prompt is loaded with `importlib.resources`, so it continues to work after the package is installed as a wheel. It instructs the model to use evidence only, separate facts from inference, deduplicate alerts, list uncertainties, and avoid inventing content merely to fill the schema.
 
+#### Message construction and analyst guidance
+
+`SystemMessage` and `HumanMessage` are LangChain representations of the system and
+user roles accepted by chat-model APIs. They have distinct responsibilities:
+
+| Input | Source | Purpose | How to update it |
+| --- | --- | --- | --- |
+| `SystemMessage` | `src/case_analyzer/prompts/investigation.md` | Stable instructions that define the model's SOC role and investigation rules | Edit the Markdown prompt |
+| `HumanMessage.case` | The input export after `normalize_case()` | Evidence for the current investigation, including the original export in `source_data` | Change the export or adapter |
+| `HumanMessage.knowledge.records` | The optional `--knowledge` JSON file | Supplementary records relevant to the case | Supply or update the knowledge file |
+| `HumanMessage.user_input` | The optional `--user-input` argument | Case-specific analyst emphasis or questions | Change the CLI argument |
+
+The system prompt is loaded by `_system_prompt()` in `analyzer.py`. The
+`build_analysis_payload()` function constructs the per-run dictionary, and
+`build_analysis_messages()` serializes that dictionary as JSON and wraps both values:
+
+```python
+return [
+    SystemMessage(content=_system_prompt()),
+    HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+]
+```
+
+For example, this adds a targeted analyst instruction:
+
+```bash
+uv run case-analyzer examples/splunk-soar.json \
+  --format soar \
+  --user-input "Focus on lateral movement and identify missing evidence"
+```
+
+The resulting human-message payload includes:
+
+```json
+{
+  "case": { "case_id": "...", "source_data": {} },
+  "knowledge": { "records": [] },
+  "user_input": "Focus on lateral movement and identify missing evidence"
+}
+```
+
+`user_input` is optional and omitted when empty. It is guidance, not additional
+evidence: the system prompt still requires conclusions to be supported by the case or
+knowledge records. Broad behavior shared by every investigation belongs in
+`investigation.md`; a question or emphasis for one case belongs in `--user-input`.
+
+The walkthrough command prints both messages before invocation. Omit `--invoke` to
+inspect them without making an LLM request:
+
+```bash
+uv run explain_case_analysis examples/splunk-soar.json --format soar
+```
+
+The pretty-printed `HumanMessage (JSON)` in that walkthrough contains the same data
+sent to the model, although the actual message is serialized as compact JSON.
+
 ### Step 5: configure and invoke the model
 
 `analyze_case()` resolves configuration in this order:
