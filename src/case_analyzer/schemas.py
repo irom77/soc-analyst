@@ -1,6 +1,30 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class EnrichmentComparison(BaseModel):
+    status: Literal["consistent", "conflicting", "inconclusive", "not_comparable"]
+    explanation: str
+
+
+class EnrichmentObservation(BaseModel):
+    observable_type: Literal["domain", "ip"]
+    value: str
+    valid: bool
+    source_paths: list[str] = Field(default_factory=list)
+    provider: str
+    retrieved_at: str
+    lookup_status: Literal["found", "not_found", "skipped", "error"]
+    details: dict[str, Any] = Field(default_factory=dict)
+    existing_case_context: list[str] = Field(default_factory=list)
+    comparison_with_case: EnrichmentComparison
+
+
+class CaseAnalyzerEnrichment(BaseModel):
+    generated_at: str
+    observations: list[EnrichmentObservation] = Field(default_factory=list)
+    truncated: bool = False
 
 
 class CanonicalCase(BaseModel):
@@ -21,6 +45,7 @@ class CanonicalCase(BaseModel):
     timeline: list[dict[str, Any]] = Field(default_factory=list)
     source: str = "generic"
     source_data: dict[str, Any] = Field(default_factory=dict)
+    case_analyzer_enrichment: CaseAnalyzerEnrichment | None = None
 
 
 class AffectedAsset(BaseModel):

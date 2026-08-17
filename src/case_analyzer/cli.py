@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .adapters import normalize_case
 from .analyzer import analyze_case, build_analysis_payload
+from .enrichment import enrich_case
 
 
 def _json_file(path: Path):
@@ -25,6 +26,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", help="OpenAI-compatible endpoint (or set CASE_ANALYZER_BASE_URL)")
     parser.add_argument("--api-key", help="Provider key (prefer CASE_ANALYZER_API_KEY)")
     parser.add_argument("--dry-run", action="store_true", help="Normalize and print input without calling an LLM")
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Validate IP/domain artifacts and query free keyless DNS/RDAP providers",
+    )
+    parser.add_argument("--enrichment-limit", type=int, default=25, help="Maximum unique observables to enrich")
+    parser.add_argument("--enrichment-timeout", type=float, default=5.0, help="Timeout per provider request in seconds")
     return parser
 
 
@@ -32,6 +40,8 @@ def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     try:
         case = normalize_case(_json_file(args.input), args.format)
+        if args.enrich:
+            enrich_case(case, limit=args.enrichment_limit, timeout=args.enrichment_timeout)
         knowledge = _json_file(args.knowledge) if args.knowledge else []
         if not isinstance(knowledge, list):
             raise ValueError("The knowledge file must contain a JSON array.")

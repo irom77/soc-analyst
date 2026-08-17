@@ -24,6 +24,36 @@ Inspect normalization without sending data to an LLM:
 uv run case-analyzer examples/generic-case.json --dry-run
 ```
 
+Validate and enrich IP/domain artifacts before analysis:
+
+```bash
+uv run case-analyzer examples/splunk-soar.json \
+  --format soar \
+  --enrich \
+  --dry-run
+```
+
+`--enrich` performs local syntax validation, queries Cloudflare's keyless DNS-over-HTTPS
+resolver for domains, and queries ARIN RDAP for public IP registration data. It can be
+combined with `--dry-run`: external enrichment requests are still made, but the LLM is
+not called. Use `--enrichment-limit` (default `25`) and `--enrichment-timeout` (default
+`5` seconds per request) to bound the work.
+
+The generated data is kept separately under
+`case.case_analyzer_enrichment.observations`; imported artifacts, notes, comments, and
+other `source_data` are never overwritten. Each observation records its provider,
+retrieval time, source paths, lookup status, and `comparison_with_case`. DNS and RDAP
+metadata is marked `not_comparable` with existing reputation claims because resolution
+or registration data cannot establish whether an observable is malicious. In
+particular, `not_found`, a provider error, or no DNS answers must not be interpreted as
+benign; those results are `inconclusive`. Invalid syntax is `conflicting` with the
+artifact's declared IP/domain type.
+
+These services do not require API keys, but they are still external services with
+availability, privacy, and rate-limit considerations. Observable values are disclosed
+to the selected service. The provider calls are best-effort: a lookup failure is
+recorded on its observation and does not abort the case analysis.
+
 For a staged, read-only walkthrough similar to the original platform's Django
 `explain_case_analysis` command, use an exported case file. It previews by default:
 
@@ -154,4 +184,4 @@ This repository is distributed under the MIT License. See [LICENSE](LICENSE) for
 
 ## Privacy and safety
 
-The non-dry-run command sends the normalized case, original `source_data`, optional knowledge, and analyst input to the configured model provider. Remove secrets and unnecessary personal data, and use a provider approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.
+The non-dry-run command sends the normalized case, original `source_data`, optional enrichment, knowledge, and analyst input to the configured model provider. `--enrich` also sends extracted domains to Cloudflare DNS and public IPs to ARIN RDAP, even when combined with `--dry-run`. Remove secrets and unnecessary personal data, and use providers approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.
