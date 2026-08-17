@@ -142,6 +142,38 @@ def _ip_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]]:
     }
 
 
+def _virustotal_lookup(
+    kind: str,
+    value: str,
+    timeout: float,
+    api_key: str,
+) -> tuple[str, str, dict[str, Any]]:
+    resource = "domains" if kind == "domain" else "ip_addresses"
+    status, body = _http_json(
+        f"https://www.virustotal.com/api/v3/{resource}/{quote(value, safe='')}",
+        {
+            "Accept": "application/json",
+            "User-Agent": "soc-analyst-case-analyzer/0.1",
+            "x-apikey": api_key,
+        },
+        timeout,
+    )
+    if status == 404:
+        return "not_found", "virustotal", {"http_status": status}
+    if status != 200:
+        error = body.get("error", {})
+        message = error.get("message", "request failed") if isinstance(error, Mapping) else str(error)
+        return "error", "virustotal", {"http_status": status, "error": message}
+
+    attributes = body.get("data", {}).get("attributes", {})
+    return "found", "virustotal", {
+        "last_analysis_stats": attributes.get("last_analysis_stats", {}),
+        "reputation": attributes.get("reputation"),
+        "categories": attributes.get("categories", {}),
+        "last_analysis_date": attributes.get("last_analysis_date"),
+    }
+
+
 def _validate(kind: str, value: str) -> tuple[bool, str]:
     candidate = value.strip().rstrip(".")
     if kind == "ip":
@@ -180,6 +212,8 @@ def enrich_case(
     timeout: float = 5.0,
     domain_lookup: Callable[[str, float], tuple[str, str, dict[str, Any]]] = _domain_lookup,
     ip_lookup: Callable[[str, float], tuple[str, str, dict[str, Any]]] = _ip_lookup,
+    virustotal_lookup: Callable[[str, str, float, str], tuple[str, str, dict[str, Any]]] = _virustotal_lookup,
+    virustotal_api_key: str | None = None,
 ) -> CaseAnalyzerEnrichment:
     if limit < 1:
         raise ValueError("The enrichment limit must be at least 1.")
@@ -226,6 +260,38 @@ def enrich_case(
                 comparison_with_case=_comparison(kind, valid, lookup_status),
             )
         )
+        virustotal_eligible = valid and (
+            kind == "domain" or ipaddress.ip_address(value).is_global
+        )
+        if virustotal_eligible and virustotal_api_key:
+            try:
+                vt_status, vt_provider, vt_details = virustotal_lookup(
+                    kind, value, timeout, virustotal_api_key
+                )
+            except (OSError, TimeoutError, URLError, ValueError, json.JSONDecodeError) as exc:
+                vt_status = "error"
+                vt_provider = "virustotal"
+                vt_details = {"error": f"{type(exc).__name__}: {exc}"}
+            observations.append(
+                EnrichmentObservation(
+                    observable_type=kind,
+                    value=value,
+                    valid=True,
+                    source_paths=list(dict.fromkeys(source["paths"])),
+                    provider=vt_provider,
+                    retrieved_at=retrieved_at,
+                    lookup_status=vt_status,
+                    details=vt_details,
+                    existing_case_context=list(dict.fromkeys(source["context"]))[:3],
+                    comparison_with_case=EnrichmentComparison(
+                        status="inconclusive",
+                        explanation=(
+                            "VirusTotal reputation is recorded separately and is not used to overwrite "
+                            "or automatically resolve existing case conclusions."
+                        ),
+                    ),
+                )
+            )
     enrichment = CaseAnalyzerEnrichment(
         generated_at=retrieved_at,
         observations=observations,

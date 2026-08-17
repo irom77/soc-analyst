@@ -1,8 +1,11 @@
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from .adapters import normalize_case
 from .analyzer import LLMProviderError, analyze_case, build_analysis_messages, build_analysis_payload
@@ -93,9 +96,15 @@ def _report_enrichment(enrichment) -> None:
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     try:
+        load_dotenv()
         case = normalize_case(_json_file(args.input), args.format)
         if args.enrich:
-            enrichment = enrich_case(case, limit=args.enrichment_limit, timeout=args.enrichment_timeout)
+            enrichment = enrich_case(
+                case,
+                limit=args.enrichment_limit,
+                timeout=args.enrichment_timeout,
+                virustotal_api_key=os.getenv("VIRUSTOTAL_API_KEY"),
+            )
             _report_enrichment(enrichment)
         knowledge = _json_file(args.knowledge) if args.knowledge else []
         if not isinstance(knowledge, list):

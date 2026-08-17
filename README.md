@@ -34,8 +34,11 @@ uv run case-analyzer examples/splunk-soar.json \
 ```
 
 `--enrich` performs local syntax validation, queries Cloudflare's keyless DNS-over-HTTPS
-resolver for domains, and queries ARIN RDAP for public IP registration data. It can be
-combined with `--dry-run`: external enrichment requests are still made, but the LLM is
+resolver for domains, and queries ARIN RDAP for public IP registration data. When
+`VIRUSTOTAL_API_KEY` is set, it also queries VirusTotal for domain and public-IP
+reputation. Keep the key in the ignored `.env` file; without it, VirusTotal is simply
+skipped. Enrichment can be combined with `--dry-run`: external enrichment requests are
+still made, but the LLM is
 not called. Use `--enrichment-limit` (default `25`) and `--enrichment-timeout` (default
 `5` seconds per request) to bound the work.
 
@@ -49,8 +52,8 @@ particular, `not_found`, a provider error, or no DNS answers must not be interpr
 benign; those results are `inconclusive`. Invalid syntax is `conflicting` with the
 artifact's declared IP/domain type.
 
-These services do not require API keys, but they are still external services with
-availability, privacy, and rate-limit considerations. Observable values are disclosed
+Cloudflare DNS and ARIN RDAP do not require API keys, while VirusTotal does. All are
+external services with availability, privacy, and rate-limit considerations. Observable values are disclosed
 to the selected service. The provider calls are best-effort: a lookup failure is
 recorded on its observation and does not abort the case analysis. Every enriched run
 prints lookup counts to standard error, plus a warning for each failed provider

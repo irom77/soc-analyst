@@ -56,6 +56,33 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual(1, len(result.observations))
         self.assertTrue(result.truncated)
 
+    def test_virustotal_runs_only_when_api_key_is_provided(self):
+        case = normalize_case({"id": "case-4", "title": "VT", "destinationDnsDomain": "example.com"})
+        calls = []
+
+        result = enrich_case(
+            case,
+            domain_lookup=lambda value, timeout: ("found", "test-dns", {}),
+            virustotal_lookup=lambda kind, value, timeout, key: (
+                calls.append((kind, value, key)) or ("found", "virustotal", {"reputation": 1})
+            ),
+            virustotal_api_key="test-key",
+        )
+
+        self.assertEqual([("domain", "example.com", "test-key")], calls)
+        self.assertEqual(["test-dns", "virustotal"], [item.provider for item in result.observations])
+
+        no_key_case = normalize_case(
+            {"id": "case-5", "title": "No VT", "destinationDnsDomain": "example.com"}
+        )
+        no_key_result = enrich_case(
+            no_key_case,
+            domain_lookup=lambda value, timeout: ("found", "test-dns", {}),
+            virustotal_lookup=lambda *args: self.fail("VirusTotal must not be called without a key"),
+            virustotal_api_key="",
+        )
+        self.assertEqual(["test-dns"], [item.provider for item in no_key_result.observations])
+
 
 if __name__ == "__main__":
     unittest.main()
