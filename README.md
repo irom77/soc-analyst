@@ -90,6 +90,30 @@ uv run case-analyzer examples/generic-case.json \
 
 The CLI automatically loads `.env` from the working directory. `.env` is ignored by Git and must not be committed. Existing environment variables and command-line options take precedence. `CASE_ANALYZER_BASE_URL` is optional when using OpenAI. The equivalent `OPENAI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_BASE_URL` variables are also accepted.
 
+### Model and gateway limits
+
+The analyzer uses `ChatOpenAI` to send requests in the OpenAI API format. The
+configured `CASE_ANALYZER_BASE_URL` identifies the service that receives the request;
+it might be a model provider's compatibility endpoint, a third-party router, or an
+internal gateway. A request can therefore follow this path:
+
+```text
+case-analyzer -> OpenAI-compatible gateway -> selected model
+```
+
+The selected model's advertised context window is only an upper bound. An
+intermediary gateway can enforce a smaller input or output token limit, HTTP request
+size limit, rate or token quota, timeout, or structured-output restriction. For
+example, a model might accept 1,048,576 input tokens while its configured gateway
+accepts only 128,000 tokens or limits request bodies to 5 MB.
+
+The practical limit is whichever applicable limit is reached first: the model limit,
+the gateway or proxy limit, the provider account tier, or a limit configured by the
+analyzer. The analyzer currently does not impose its own token limit or automatically
+truncate oversized input. Consult the documentation for both the selected model and
+the service named by `CASE_ANALYZER_BASE_URL` when sizing case, knowledge, and
+enrichment payloads.
+
 ## Run the reasoning examples
 
 After configuring the provider variables above, run the automated comparison from the repository root:
