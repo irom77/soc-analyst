@@ -52,7 +52,17 @@ artifact's declared IP/domain type.
 These services do not require API keys, but they are still external services with
 availability, privacy, and rate-limit considerations. Observable values are disclosed
 to the selected service. The provider calls are best-effort: a lookup failure is
-recorded on its observation and does not abort the case analysis.
+recorded on its observation and does not abort the case analysis. Every enriched run
+prints lookup counts to standard error, plus a warning for each failed provider
+request. JSON output remains on standard output or in the file selected by `--output`.
+
+LLM failures stop the analysis without writing a report. Authentication failures,
+rate or quota limits, timeouts, connection failures, and provider HTTP errors are
+reported as concise `case-analyzer: LLM error:` messages without printing credentials
+or request payloads. Automatic LLM retries are disabled to avoid unplanned cost and
+additional rate-limit pressure. Exit codes are `2` for input/configuration errors, `3`
+for authentication, `4` for rate/quota limits, `5` for timeout/connection failures,
+and `6` for other provider errors.
 
 Add `--explain` to print normalization plus the exact system and human messages before
 the result:

@@ -6,8 +6,24 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    OpenAIError,
+    RateLimitError,
+)
 
 from .schemas import CanonicalCase, InvestigationReport
+
+
+class LLMProviderError(RuntimeError):
+    """Sanitized provider failure suitable for display by the CLI."""
+
+    def __init__(self, message: str, exit_code: int):
+        super().__init__(message)
+        self.exit_code = exit_code
 
 
 def _system_prompt() -> str:
@@ -57,13 +73,27 @@ def analyze_case(
     selected_model = model or os.getenv("CASE_ANALYZER_MODEL") or os.getenv("OPENAI_MODEL")
     if not selected_model:
         raise ValueError("Set CASE_ANALYZER_MODEL or pass --model.")
-    llm = ChatOpenAI(
-        model=selected_model,
-        base_url=base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
-        api_key=api_key or os.getenv("CASE_ANALYZER_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        temperature=0,
-    )
-    structured_llm = llm.with_structured_output(InvestigationReport)
-    return structured_llm.invoke(
-        build_analysis_messages(case, knowledge_records=knowledge_records, user_input=user_input)
-    )
+    try:
+        llm = ChatOpenAI(
+            model=selected_model,
+            base_url=base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+            api_key=api_key or os.getenv("CASE_ANALYZER_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            temperature=0,
+            max_retries=0,
+        )
+        structured_llm = llm.with_structured_output(InvestigationReport)
+        return structured_llm.invoke(
+            build_analysis_messages(case, knowledge_records=knowledge_records, user_input=user_input)
+        )
+    except AuthenticationError as exc:
+        raise LLMProviderError("LLM authentication failed; check the configured API key.", 3) from exc
+    except RateLimitError as exc:
+        raise LLMProviderError("LLM rate limit or quota was exceeded; retry later or check provider limits.", 4) from exc
+    except APITimeoutError as exc:
+        raise LLMProviderError("LLM request timed out; check the endpoint and try again.", 5) from exc
+    except APIConnectionError as exc:
+        raise LLMProviderError("Could not connect to the LLM endpoint; check the URL and network.", 5) from exc
+    except APIStatusError as exc:
+        raise LLMProviderError(f"LLM provider returned HTTP {exc.status_code}.", 6) from exc
+    except OpenAIError as exc:
+        raise LLMProviderError(f"LLM request failed ({type(exc).__name__}).", 6) from exc

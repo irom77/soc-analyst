@@ -1,10 +1,11 @@
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 from .adapters import normalize_case
-from .analyzer import analyze_case, build_analysis_messages, build_analysis_payload
+from .analyzer import LLMProviderError, analyze_case, build_analysis_messages, build_analysis_payload
 from .enrichment import enrich_case
 
 
@@ -68,12 +69,34 @@ def _explain(case, knowledge, knowledge_path, user_input) -> None:
     _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 
 
+def _report_enrichment(enrichment) -> None:
+    counts = Counter(item.lookup_status for item in enrichment.observations)
+    print(
+        "case-analyzer: enrichment: "
+        f"found={counts['found']} not_found={counts['not_found']} "
+        f"skipped={counts['skipped']} error={counts['error']} "
+        f"truncated={'yes' if enrichment.truncated else 'no'}",
+        file=sys.stderr,
+    )
+    for item in enrichment.observations:
+        if item.lookup_status != "error":
+            continue
+        status = item.details.get("http_status")
+        reason = f"HTTP {status}" if status else item.details.get("error", "provider request failed")
+        print(
+            f"case-analyzer: enrichment warning: {item.provider} failed for "
+            f"{item.observable_type} {item.value}: {reason}",
+            file=sys.stderr,
+        )
+
+
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     try:
         case = normalize_case(_json_file(args.input), args.format)
         if args.enrich:
-            enrich_case(case, limit=args.enrichment_limit, timeout=args.enrichment_timeout)
+            enrichment = enrich_case(case, limit=args.enrichment_limit, timeout=args.enrichment_timeout)
+            _report_enrichment(enrichment)
         knowledge = _json_file(args.knowledge) if args.knowledge else []
         if not isinstance(knowledge, list):
             raise ValueError("The knowledge file must contain a JSON array.")
@@ -106,6 +129,9 @@ def main(argv=None) -> int:
             _heading("5. Stop without writing to a source platform")
             print("The standalone command does not update a Case, database, or worker job.")
         return 0
+    except LLMProviderError as exc:
+        print(f"case-analyzer: LLM error: {exc}", file=sys.stderr)
+        return exc.exit_code
     except (OSError, ValueError) as exc:
         print(f"case-analyzer: error: {exc}", file=sys.stderr)
         return 2
