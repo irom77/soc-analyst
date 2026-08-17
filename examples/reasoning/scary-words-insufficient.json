@@ -1,0 +1,40 @@
+{
+  "id": 2301,
+  "name": "URGENT APT MALWARE C2 DATA EXFILTRATION",
+  "label": "incident",
+  "container_type": "case",
+  "status": "open",
+  "severity": "critical",
+  "description": "Possible nation-state ransomware attack and catastrophic data breach.",
+  "create_time": "2026-08-15T09:30:00Z",
+  "tags": ["apt", "malware", "c2", "exfiltration", "ransomware"],
+  "notes": [
+    {
+      "title": "Unverified report",
+      "content": "A user reported a slow laptop and said it might be hacked. No endpoint telemetry has yet been collected.",
+      "author": "helpdesk"
+    }
+  ],
+  "child_containers": [
+    {
+      "id": 2302,
+      "name": "CRITICAL command-and-control indicator",
+      "container_type": "default",
+      "parent_container": 2301,
+      "severity": "critical",
+      "artifacts": [
+        {
+          "name": "Incomplete DNS observation",
+          "type": "network",
+          "cef": {"sourceHostName": "LAPTOP-77", "query": "cdn.example.invalid"},
+          "notes": [
+            {
+              "title": "Collection gap",
+              "content": "The alert contains no response address, timestamp, process attribution, reputation result, packet data, or corroborating event. The detection rule name supplied the C2 label."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

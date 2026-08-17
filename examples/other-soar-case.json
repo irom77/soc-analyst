@@ -1,0 +1,21 @@
+{
+  "caseId": "SOAR-EXAMPLE-001",
+  "title": "Suspicious privileged login",
+  "platform": "Other SOAR Platform",
+  "severity": "high",
+  "status": "open",
+  "detections": [
+    {
+      "name": "Unusual administrator login",
+      "timestamp": "2026-08-15T12:00:00Z",
+      "username": "admin@example.com",
+      "source_ip": "192.0.2.10"
+    }
+  ],
+  "observables": [
+    {
+      "type": "ip",
+      "value": "192.0.2.10"
+    }
+  ]
+}

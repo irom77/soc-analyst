@@ -1,0 +1,207 @@
+{
+  "id": 1042,
+  "name": "CASE-2026-0814-01: Cobalt Strike Activity on WS-FIN-09",
+  "label": "incident",
+  "container_type": "case",
+  "status": "open",
+  "severity": "high",
+  "sensitivity": "amber",
+  "stage_name": "Containment & Eradication",
+  "owner_name": "analyst_jdoe",
+  "owner_id": 14,
+  "parent_container": null,
+  "description": "Multi-stage incident involving phishing delivery, encoded script execution, and C2 staging.",
+  "create_time": "2026-08-14T18:22:10.452819Z",
+  "tags": [
+    "c2_traffic",
+    "finance_subnet",
+    "apt_activity"
+  ],
+  "custom_fields": {
+    "mitre_tactic": "TA0011 - Command and Control",
+    "incident_lead": "analyst_jdoe",
+    "escalation_approved": true
+  },
+  "notes": [
+    {
+      "id": 401,
+      "container_id": 1042,
+      "title": "Incident Summary & Assessment",
+      "content": "Host WS-FIN-09 exhibited beaconing behavior after opening an attachment. Multiple child events merged into this parent case.",
+      "author": "analyst_jdoe",
+      "create_time": "2026-08-14T18:35:00.120Z",
+      "phase": "Triage"
+    }
+  ],
+  "comments": [
+    {
+      "id": 901,
+      "container_id": 1042,
+      "user_id": 14,
+      "comment": "Host network isolation approved by SOC Lead.",
+      "create_time": "2026-08-14T18:25:30.000Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 6101,
+      "container_id": 1042,
+      "name": "C2 Beacon Domain Observable",
+      "label": "intelligence",
+      "type": "network",
+      "severity": "high",
+      "create_time": "2026-08-14T18:22:15.000Z",
+      "cef": {
+        "destinationDnsDomain": "stage2.malicious-domain.xyz",
+        "destinationAddress": "198.51.100.44",
+        "destinationPort": 443
+      },
+      "cef_types": {
+        "destinationDnsDomain": ["domain"],
+        "destinationAddress": ["ip"],
+        "destinationPort": ["port"]
+      },
+      "tags": [
+        "ioc",
+        "c2"
+      ],
+      "notes": [
+        {
+          "id": 8101,
+          "artifact_id": 6101,
+          "title": "Threat Intelligence Enrichment",
+          "content": "Domain resolved via Fast Flux DNS. Reputation score: 89/100 Malicious.",
+          "author": "automation_playbook",
+          "create_time": "2026-08-14T18:23:01.000Z"
+        }
+      ],
+      "comments": [
+        {
+          "id": 951,
+          "artifact_id": 6101,
+          "comment": "Confirmed IOC matches US-CERT advisory bulletin.",
+          "create_time": "2026-08-14T18:24:10.000Z"
+        }
+      ]
+    }
+  ],
+  "child_containers": [
+    {
+      "id": 1039,
+      "name": "Splunk Notable: Suspicious Execution via Phishing Attachment",
+      "label": "notable_event",
+      "container_type": "default",
+      "parent_container": 1042,
+      "status": "closed",
+      "close_reason": "Promoted to Case 1042",
+      "severity": "high",
+      "source_data_identifier": "es_notable_78a10f9b-11c2",
+      "create_time": "2026-08-14T18:15:02.000Z",
+      "notes": [
+        {
+          "id": 402,
+          "container_id": 1039,
+          "title": "Initial Triage Findings",
+          "content": "Alert triggered via Splunk ES correlation search for suspicious office child process.",
+          "author": "analyst_jdoe",
+          "create_time": "2026-08-14T18:18:00.000Z"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 6088,
+          "container_id": 1039,
+          "name": "Endpoint Process Execution",
+          "label": "endpoint",
+          "type": "process",
+          "severity": "high",
+          "cef": {
+            "sourceHostName": "WS-FIN-09",
+            "sourceAddress": "10.20.4.115",
+            "processName": "powershell.exe",
+            "processCommandLine": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+            "parentProcessName": "excel.exe"
+          },
+          "cef_types": {
+            "sourceHostName": ["host_name"],
+            "sourceAddress": ["ip"],
+            "processName": ["process_name"]
+          },
+          "tags": [
+            "sysmon",
+            "encoded_command"
+          ],
+          "notes": [
+            {
+              "id": 8092,
+              "artifact_id": 6088,
+              "title": "Base64 Deobfuscation Analysis",
+              "content": "Decoded payload attempts an IEX Net.WebClient download from remote stage2 domain.",
+              "author": "analyst_jdoe",
+              "create_time": "2026-08-14T18:20:45.000Z"
+            }
+          ],
+          "comments": [
+            {
+              "id": 948,
+              "artifact_id": 6088,
+              "comment": "Parent PID confirmed as 4812 (Microsoft Excel).",
+              "create_time": "2026-08-14T18:21:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 1040,
+      "name": "Firewall Alert: Outbound Beacon Traffic to Untrusted Subnet",
+      "label": "network_alert",
+      "container_type": "default",
+      "parent_container": 1042,
+      "status": "closed",
+      "close_reason": "Promoted to Case 1042",
+      "severity": "medium",
+      "source_data_identifier": "pan_threat_991823a",
+      "create_time": "2026-08-14T18:16:30.000Z",
+      "notes": [],
+      "artifacts": [
+        {
+          "id": 6095,
+          "container_id": 1040,
+          "name": "Firewall Outbound Session",
+          "label": "network",
+          "type": "traffic",
+          "severity": "medium",
+          "cef": {
+            "sourceAddress": "10.20.4.115",
+            "destinationAddress": "198.51.100.44",
+            "destinationPort": 443,
+            "transportProtocol": "tcp",
+            "bytesOut": 4820,
+            "bytesIn": 104520
+          },
+          "cef_types": {
+            "sourceAddress": ["ip"],
+            "destinationAddress": ["ip"],
+            "destinationPort": ["port"]
+          },
+          "tags": [
+            "firewall",
+            "ssl_outbound"
+          ],
+          "notes": [
+            {
+              "id": 8099,
+              "artifact_id": 6095,
+              "title": "Session Duration & Flow Analysis",
+              "content": "Persistent TLS session lasting 450s with periodic 30-second interval pulses.",
+              "author": "automation_playbook",
+              "create_time": "2026-08-14T18:19:12.000Z"
+            }
+          ],
+          "comments": []
+        }
+      ]
+    }
+  ]
+}

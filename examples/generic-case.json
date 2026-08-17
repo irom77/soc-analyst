@@ -1,0 +1,16 @@
+{
+  "case_id": "EXAMPLE-001",
+  "title": "Suspicious privileged login",
+  "description": "An administrator authenticated from an unfamiliar source address.",
+  "severity": "high",
+  "status": "open",
+  "tags": ["identity", "privileged-access"],
+  "alerts": [
+    {
+      "title": "Unusual administrator login",
+      "timestamp": "2026-08-15T12:00:00Z",
+      "username": "admin@example.com",
+      "source_ip": "192.0.2.10"
+    }
+  ]
+}

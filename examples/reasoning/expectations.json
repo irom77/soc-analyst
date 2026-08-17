@@ -1,0 +1,17 @@
+[
+  {
+    "file": "scary-words-benign.json",
+    "scenario": "Alarming wording, verified simulation",
+    "expected_verdicts": ["Benign", "False Positive"]
+  },
+  {
+    "file": "reassuring-words-malicious.json",
+    "scenario": "Reassuring wording, malicious evidence",
+    "expected_verdicts": ["True Positive", "Suspicious"]
+  },
+  {
+    "file": "scary-words-insufficient.json",
+    "scenario": "Alarming wording, incomplete evidence",
+    "expected_verdicts": ["Insufficient Data", "Suspicious"]
+  }
+]

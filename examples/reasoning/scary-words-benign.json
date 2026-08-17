@@ -1,0 +1,84 @@
+{
+  "id": 2101,
+  "name": "CRITICAL MALWARE RANSOMWARE ATTACK on BUILD-LAB-03",
+  "label": "incident",
+  "container_type": "case",
+  "status": "open",
+  "severity": "critical",
+  "description": "URGENT: destructive malware, credential theft, ransomware, and command-and-control detected.",
+  "create_time": "2026-08-15T13:00:00Z",
+  "tags": ["malware", "ransomware", "critical", "c2", "credential_theft"],
+  "notes": [
+    {
+      "title": "Validation context",
+      "content": "This is the scheduled quarterly detection-validation exercise CHG-4821 in the isolated BUILD-LAB network. The SOC lead approved the exact simulation from 13:00 through 14:00 UTC.",
+      "author": "analyst_mrivera",
+      "create_time": "2026-08-15T13:04:00Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "Exercise controller",
+      "type": "host",
+      "cef": {"sourceHostName": "SIM-CONTROLLER-01", "sourceAddress": "10.250.0.10"},
+      "notes": [
+        {
+          "title": "Asset verification",
+          "content": "CMDB identifies both hosts as isolated cyber-range assets with no route to production. Execution was initiated by service account svc_detection_test under approved change CHG-4821."
+        }
+      ]
+    }
+  ],
+  "child_containers": [
+    {
+      "id": 2102,
+      "name": "MALWARE PowerShell credential theft",
+      "container_type": "default",
+      "parent_container": 2101,
+      "severity": "critical",
+      "artifacts": [
+        {
+          "name": "Process execution",
+          "type": "process",
+          "cef": {
+            "sourceHostName": "BUILD-LAB-03",
+            "processName": "attack-simulator.exe",
+            "processCommandLine": "attack-simulator.exe --scenario ransomware-safe --no-encryption",
+            "userName": "svc_detection_test"
+          },
+          "notes": [
+            {
+              "title": "Endpoint outcome",
+              "content": "EDR recorded simulation markers only: no file encryption, credential access, persistence, or payload download occurred. Binary hash matches the internally signed validation tool inventory."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2103,
+      "name": "CRITICAL C2 beacon traffic",
+      "container_type": "default",
+      "parent_container": 2101,
+      "severity": "critical",
+      "artifacts": [
+        {
+          "name": "Network simulation",
+          "type": "network",
+          "cef": {
+            "sourceAddress": "10.250.0.23",
+            "destinationAddress": "10.250.0.10",
+            "destinationPort": 8443,
+            "bytesOut": 128
+          },
+          "notes": [
+            {
+              "title": "Network verification",
+              "content": "Destination is the internal exercise controller. Firewall confirms the isolated range blocked all external egress during the exercise."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
