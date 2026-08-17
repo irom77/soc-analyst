@@ -1,0 +1,40 @@
+{
+  "id": 1042,
+  "name": "CASE-2026-0814-01: Enrichment example",
+  "label": "incident",
+  "container_type": "case",
+  "status": "open",
+  "severity": "high",
+  "description": "Reduced Splunk SOAR export for demonstrating external enrichment.",
+  "create_time": "2026-08-14T18:22:10.452819Z",
+  "artifacts": [
+    {
+      "id": 6101,
+      "container_id": 1042,
+      "name": "C2 Beacon Domain Observable",
+      "label": "intelligence",
+      "type": "network",
+      "severity": "high",
+      "create_time": "2026-08-14T18:22:15.000Z",
+      "cef": {
+        "destinationDnsDomain": "stage2.malicious-domain.xyz"
+      },
+      "cef_types": {
+        "destinationDnsDomain": [
+          "domain"
+        ]
+      },
+      "notes": [
+        {
+          "id": 8101,
+          "artifact_id": 6101,
+          "title": "Threat Intelligence Enrichment",
+          "content": "Imported case enrichment claims a malicious reputation score.",
+          "author": "automation_playbook",
+          "create_time": "2026-08-14T18:23:01.000Z"
+        }
+      ]
+    }
+  ],
+  "child_containers": []
+}
