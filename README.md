@@ -6,7 +6,7 @@ For a detailed explanation of the package architecture and execution flow, see t
 
 For common questions about evidence handling and generated conclusions, see the [Case Analyzer FAQ](FAQ.md).
 
-For a complete nested-container example and recorded live LLM output, see the [Splunk SOAR case analysis result](examples/splunk-soar-analysis.md). The [full `explain_case_analysis` transcript](examples/splunk-soar-explain-case-analysis.txt) records the standalone walkthrough for the same export.
+For a complete nested-container example and recorded live LLM output, see the [Splunk SOAR case analysis result](examples/splunk-soar-analysis.md). The [full explanation transcript](examples/splunk-soar-explain-case-analysis.txt) records the earlier compatibility command's walkthrough for the same export.
 
 For contrasting cases that exercise evidence-oriented reasoning rather than keyword matching, see the [reasoning examples and recorded comparison](examples/reasoning/README.md).
 
@@ -54,25 +54,26 @@ availability, privacy, and rate-limit considerations. Observable values are disc
 to the selected service. The provider calls are best-effort: a lookup failure is
 recorded on its observation and does not abort the case analysis.
 
-For a staged, read-only walkthrough similar to the original platform's Django
-`explain_case_analysis` command, use an exported case file. It previews by default:
+Add `--explain` to print normalization plus the exact system and human messages before
+the result:
 
 ```bash
-uv run explain_case_analysis examples/generic-case.json
+uv run case-analyzer examples/generic-case.json --explain
 ```
 
-Add `--invoke` to call the configured LLM and print the structured report:
+Combine it with `--dry-run` to stop before the LLM call:
 
 ```bash
-uv run explain_case_analysis examples/generic-case.json --invoke
+uv run case-analyzer examples/generic-case.json --explain --dry-run
 ```
 
 For a complete captured live run, see the [`splunk-soar.json` walkthrough transcript](examples/splunk-soar-explain-case-analysis.txt).
 
 Unlike the original Django command, the standalone command cannot look up a Case or
 search Knowledge in PostgreSQL. Pass an optional JSON array with `--knowledge` when
-that context is available. The hyphenated alias `explain-case-analysis` is also
-installed.
+that context is available. The `explain_case_analysis` and `explain-case-analysis`
+commands remain as deprecated compatibility aliases; their old `--invoke` behavior is
+translated to `case-analyzer --explain`.
 
 ### System message, human message, and analyst input
 
@@ -92,12 +93,12 @@ Every live analysis sends two messages to the model:
 For example:
 
 ```bash
-uv run explain_case_analysis examples/splunk-soar.json \
-  --user-input "Focus on lateral movement and identify missing evidence" \
-  --invoke
+uv run case-analyzer examples/splunk-soar.json \
+  --explain \
+  --user-input "Focus on lateral movement and identify missing evidence"
 ```
 
-Preview the exact messages without contacting the provider by omitting `--invoke`.
+Preview the exact messages without contacting the provider by adding `--dry-run`.
 See [Message construction and analyst guidance](case-analyzer-code.md#message-construction-and-analyst-guidance)
 for the payload structure and relevant source functions.
 

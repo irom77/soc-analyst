@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from .adapters import normalize_case
-from .analyzer import analyze_case, build_analysis_payload
+from .analyzer import analyze_case, build_analysis_messages, build_analysis_payload
 from .enrichment import enrich_case
 
 
@@ -27,6 +27,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-key", help="Provider key (prefer CASE_ANALYZER_API_KEY)")
     parser.add_argument("--dry-run", action="store_true", help="Normalize and print input without calling an LLM")
     parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Print normalization and the exact LLM messages before the result",
+    )
+    parser.add_argument(
         "--enrich",
         action="store_true",
         help="Validate IP/domain artifacts and query free keyless DNS/RDAP providers",
@@ -34,6 +39,33 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--enrichment-limit", type=int, default=25, help="Maximum unique observables to enrich")
     parser.add_argument("--enrichment-timeout", type=float, default=5.0, help="Timeout per provider request in seconds")
     return parser
+
+
+def _heading(text: str) -> None:
+    print(f"\n=== {text} ===")
+
+
+def _print_json(value) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+def _explain(case, knowledge, knowledge_path, user_input) -> None:
+    _heading("1. Normalize the exported Case")
+    _print_json(case.model_dump(exclude_none=True))
+
+    _heading("2. Add supplied Knowledge context")
+    if knowledge_path:
+        print(f"Loaded {len(knowledge)} record(s) from {knowledge_path}.")
+    else:
+        print("No Knowledge file supplied; the standalone analyzer does not query a database.")
+    _print_json(knowledge)
+
+    _heading("3. Build the structured investigation request")
+    messages = build_analysis_messages(case, knowledge_records=knowledge, user_input=user_input)
+    print("SystemMessage:")
+    print(messages[0].content)
+    print("\nHumanMessage (JSON):")
+    _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 
 
 def main(argv=None) -> int:
@@ -45,9 +77,16 @@ def main(argv=None) -> int:
         knowledge = _json_file(args.knowledge) if args.knowledge else []
         if not isinstance(knowledge, list):
             raise ValueError("The knowledge file must contain a JSON array.")
+        if args.explain:
+            _explain(case, knowledge, args.knowledge, args.user_input)
         if args.dry_run:
             result = build_analysis_payload(case, knowledge_records=knowledge, user_input=args.user_input)
+            if args.explain:
+                _heading("4. Stop without invoking the LLM")
+                print("Preview complete. Remove --dry-run to request an InvestigationReport.")
         else:
+            if args.explain:
+                _heading("4. Invoke the LLM for an InvestigationReport")
             result = analyze_case(
                 case,
                 knowledge_records=knowledge,
@@ -59,8 +98,13 @@ def main(argv=None) -> int:
         rendered = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:
             args.output.write_text(rendered + "\n", encoding="utf-8")
+            if args.explain:
+                print(f"Wrote result JSON to {args.output}.")
         else:
             print(rendered)
+        if args.explain and not args.dry_run:
+            _heading("5. Stop without writing to a source platform")
+            print("The standalone command does not update a Case, database, or worker job.")
         return 0
     except (OSError, ValueError) as exc:
         print(f"case-analyzer: error: {exc}", file=sys.stderr)

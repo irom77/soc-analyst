@@ -224,11 +224,11 @@ evidence: the system prompt still requires conclusions to be supported by the ca
 knowledge records. Broad behavior shared by every investigation belongs in
 `investigation.md`; a question or emphasis for one case belongs in `--user-input`.
 
-The walkthrough command prints both messages before invocation. Omit `--invoke` to
-inspect them without making an LLM request:
+The main command's `--explain` option prints both messages before invocation. Add
+`--dry-run` to inspect them without making an LLM request:
 
 ```bash
-uv run explain_case_analysis examples/splunk-soar.json --format soar
+uv run case-analyzer examples/splunk-soar.json --format soar --explain --dry-run
 ```
 
 The pretty-printed `HumanMessage (JSON)` in that walkthrough contains the same data
