@@ -78,7 +78,7 @@ uv run case-analyzer case.json --knowledge knowledge.json --dry-run
 
 ## Origin and license
 
-Soc Analyst was extracted from the standalone case-analysis work developed in [FunnyWolf/agentic-soc-platform](https://github.com/FunnyWolf/agentic-soc-platform), the open-source Agentic SOC Platform. Project documentation is available at [asp.viperrtp.com](https://asp.viperrtp.com/).
+Soc Analyst was extracted from [irom77/agentic-soc](https://github.com/irom77/agentic-soc), a fork of the open-source [FunnyWolf/agentic-soc-platform](https://github.com/FunnyWolf/agentic-soc-platform) project. Agentic SOC Platform documentation is available at [asp.viperrtp.com](https://asp.viperrtp.com/).
 
 This repository is distributed under the MIT License. See [LICENSE](LICENSE) for the copyright and permission notice retained from the Agentic SOC Platform project.
 
