@@ -76,6 +76,12 @@ An optional knowledge file must be a JSON array:
 uv run case-analyzer case.json --knowledge knowledge.json --dry-run
 ```
 
+## Origin and license
+
+Soc Analyst was extracted from the standalone case-analysis work developed in [FunnyWolf/agentic-soc-platform](https://github.com/FunnyWolf/agentic-soc-platform), the open-source Agentic SOC Platform. Project documentation is available at [asp.viperrtp.com](https://asp.viperrtp.com/).
+
+This repository is distributed under the MIT License. See [LICENSE](LICENSE) for the copyright and permission notice retained from the Agentic SOC Platform project.
+
 ## Privacy and safety
 
 The non-dry-run command sends the normalized case, original `source_data`, optional knowledge, and analyst input to the configured model provider. Remove secrets and unnecessary personal data, and use a provider approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.
