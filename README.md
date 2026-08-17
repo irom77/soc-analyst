@@ -33,16 +33,15 @@ uv run case-analyzer examples/other-soar-case.json --format soar --dry-run
 Invoke an OpenAI-compatible model:
 
 ```bash
-export CASE_ANALYZER_MODEL="your-model"
-export CASE_ANALYZER_API_KEY="your-key"
-export CASE_ANALYZER_BASE_URL="https://provider.example/v1"
+cp .env.example .env
+# Edit .env with your provider settings.
 
 uv run case-analyzer examples/generic-case.json \
   --format generic \
   --output investigation-report.json
 ```
 
-`CASE_ANALYZER_BASE_URL` is optional when using OpenAI. The equivalent `OPENAI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_BASE_URL` variables are also accepted.
+The CLI automatically loads `.env` from the working directory. `.env` is ignored by Git and must not be committed. Existing environment variables and command-line options take precedence. `CASE_ANALYZER_BASE_URL` is optional when using OpenAI. The equivalent `OPENAI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_BASE_URL` variables are also accepted.
 
 ## Run the reasoning examples
 

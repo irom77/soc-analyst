@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 
 from .schemas import CanonicalCase, InvestigationReport
 
@@ -50,6 +51,9 @@ def analyze_case(
     base_url: str | None = None,
     api_key: str | None = None,
 ) -> InvestigationReport:
+    # Make the standalone CLI usable without manually exporting provider
+    # variables. Existing environment variables retain precedence over .env.
+    load_dotenv()
     selected_model = model or os.getenv("CASE_ANALYZER_MODEL") or os.getenv("OPENAI_MODEL")
     if not selected_model:
         raise ValueError("Set CASE_ANALYZER_MODEL or pass --model.")
