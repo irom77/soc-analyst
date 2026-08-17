@@ -58,6 +58,8 @@ to the selected service. The provider calls are best-effort: a lookup failure is
 recorded on its observation and does not abort the case analysis. Every enriched run
 prints lookup counts to standard error, plus a warning for each failed provider
 request. JSON output remains on standard output or in the file selected by `--output`.
+See [`examples/enrichment/`](examples/enrichment/) for a recorded enriched payload and
+the command used to regenerate it.
 
 LLM failures stop the analysis without writing a report. Authentication failures,
 rate or quota limits, timeouts, connection failures, and provider HTTP errors are
