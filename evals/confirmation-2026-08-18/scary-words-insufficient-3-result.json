@@ -1,0 +1,71 @@
+{
+  "verdict": "Insufficient Data",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "Low",
+  "digest": "A case was opened with a critical severity title suggesting APT malware C2 and data exfiltration. However, the only supporting evidence is an unverified user report of a slow laptop and an incomplete DNS observation for `cdn.example.invalid` from `LAPTOP-77`. The domain uses the `.invalid` TLD, which is reserved for testing and examples, making it highly unlikely to be a legitimate C2 server. Critical details such as timestamps, process attribution, DNS response, and corroborating events are missing, leading to an `Insufficient Data` verdict.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "LAPTOP-77"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Unverified User Report",
+      "finding_type": "User Observation",
+      "subject": "User Experience",
+      "evidence": "A user reported a slow laptop and said it might be hacked.",
+      "conclusion": "This report is unverified and lacks technical details to confirm a security incident."
+    },
+    {
+      "title": "Incomplete DNS Observation to Reserved TLD",
+      "finding_type": "Network Activity",
+      "subject": "cdn.example.invalid",
+      "evidence": "An 'Incomplete DNS observation' for `cdn.example.invalid` from `LAPTOP-77`. The alert lacks 'response address, timestamp, process attribution, reputation result, packet data, or corroborating event.' The domain `cdn.example.invalid` uses the `.invalid` TLD, which is reserved for testing and examples.",
+      "conclusion": "A DNS query was observed, but critical context is missing. The use of a reserved TLD strongly suggests this is not a legitimate C2 domain, but rather a test, misconfiguration, or placeholder."
+    },
+    {
+      "title": "Lack of Corroborating Evidence for Severe Claims",
+      "finding_type": "Data Gap",
+      "subject": "Incident Confirmation",
+      "evidence": "The case title and description claim 'APT MALWARE C2 DATA EXFILTRATION' and 'nation-state ransomware attack,' but no technical evidence (e.g., malware hashes, C2 communication, exfiltrated data, ransomware artifacts) supports these claims.",
+      "conclusion": "The severe claims in the case title and description are not supported by any technical evidence in the provided data."
+    }
+  ],
+  "attack_chain": [],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T09:30:00Z",
+      "attack_behavior": "Initial Reporting / Alerting",
+      "evidence_field": "case.created_at"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "cdn.example.invalid",
+      "context": "Observed in an incomplete DNS query from LAPTOP-77. Uses a reserved TLD (.invalid)."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Investigate",
+      "description": "Collect full endpoint telemetry from LAPTOP-77, including process activity, network connections, and DNS logs, to verify the user's report and the incomplete DNS observation.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Monitor",
+      "description": "Monitor network traffic from LAPTOP-77 for further connections to `cdn.example.invalid` or other suspicious domains.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The actual cause of the user's slow laptop.",
+    "The full context of the DNS query to `cdn.example.invalid` (timestamp, process, response, full request/response).",
+    "Whether `cdn.example.invalid` is a legitimate or malicious domain, or a misconfiguration/test.",
+    "Whether any C2, data exfiltration, or ransomware activity has actually occurred.",
+    "The true severity and impact of the reported incident."
+  ]
+}

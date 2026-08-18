@@ -1,0 +1,70 @@
+{
+  "verdict": "Insufficient Data",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "Low",
+  "digest": "A user reported a slow laptop. An incomplete DNS observation for cdn.example.invalid was recorded from LAPTOP-77. There is no corroborating evidence to confirm malicious activity, C2 communication, or data exfiltration. The initial alert severity and description are not supported by the available technical evidence.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "LAPTOP-77"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "User Reported Slow Laptop",
+      "finding_type": "User Report",
+      "subject": "LAPTOP-77",
+      "evidence": "A user reported a slow laptop and said it might be hacked.",
+      "conclusion": "A user experienced performance issues on LAPTOP-77, leading to a suspicion of compromise, but this is unverified."
+    },
+    {
+      "title": "Incomplete DNS Observation",
+      "finding_type": "Network Activity",
+      "subject": "cdn.example.invalid",
+      "evidence": "An incomplete DNS observation for 'cdn.example.invalid' from 'sourceHostName: LAPTOP-77' was recorded. The observation explicitly lacks a response address, timestamp, process attribution, reputation result, packet data, or corroborating event.",
+      "conclusion": "A DNS query for 'cdn.example.invalid' originated from 'LAPTOP-77', but its nature (malicious or benign) cannot be determined due to missing data."
+    },
+    {
+      "title": "Lack of Corroborating Evidence",
+      "finding_type": "Data Gap",
+      "subject": "Case 2301",
+      "evidence": "No endpoint telemetry has yet been collected. The DNS observation explicitly states missing critical details such as response, timestamp, process attribution, reputation, and packet data.",
+      "conclusion": "Insufficient technical evidence exists to confirm any malicious activity, C2 communication, or data exfiltration as suggested by the case title and description."
+    }
+  ],
+  "attack_chain": [],
+  "attack_timeline": [],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "cdn.example.invalid",
+      "context": "Observed in an incomplete DNS query from LAPTOP-77."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Data Collection",
+      "description": "Collect full endpoint telemetry from LAPTOP-77, including process activity, network connections, and DNS logs, to investigate the reported slowness and the DNS query.",
+      "priority": "High"
+    },
+    {
+      "action_type": "User Interview",
+      "description": "Interview the user of LAPTOP-77 to gather more context about the reported performance issues and any unusual observations.",
+      "priority": "Medium"
+    },
+    {
+      "action_type": "Network Monitoring",
+      "description": "Enhance network monitoring for LAPTOP-77 to capture full DNS responses and network traffic to cdn.example.invalid if it recurs.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The actual cause of the user's reported slow laptop.",
+    "Whether 'cdn.example.invalid' is a malicious domain or a legitimate content delivery network.",
+    "The process responsible for the DNS query to 'cdn.example.invalid'.",
+    "Whether 'LAPTOP-77' is actually compromised.",
+    "The true nature of the activity described by the 'CRITICAL command-and-control indicator' alert."
+  ]
+}

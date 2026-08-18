@@ -1,0 +1,68 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "Low",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "A single failed VPN login attempt for user m.alvarez was immediately followed by a successful MFA-confirmed login from the same IP address and registered device. This pattern is consistent with a user mistyping their password.",
+  "affected_assets": [
+    {
+      "asset_type": "user",
+      "asset_value": "m.alvarez"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "198.51.100.24"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Failed VPN Authentication",
+      "finding_type": "authentication_event",
+      "subject": "m.alvarez",
+      "evidence": "A single failed VPN authentication attempt was recorded for user m.alvarez from IP address 198.51.100.24 at approximately 08:03Z.",
+      "conclusion": "This event indicates an incorrect password attempt."
+    },
+    {
+      "title": "Successful MFA-Confirmed VPN Login",
+      "finding_type": "authentication_event",
+      "subject": "m.alvarez",
+      "evidence": "One minute after the failed attempt, user m.alvarez successfully logged into the VPN from the same IP address 198.51.100.24, with MFA confirmation, at approximately 08:04Z.",
+      "conclusion": "The successful login with MFA from the same source suggests the user corrected a password error and successfully authenticated."
+    },
+    {
+      "title": "Contextual Information",
+      "finding_type": "contextual_information",
+      "subject": "m.alvarez",
+      "evidence": "Notes indicate the failed attempt was due to a 'password mistyped once' and the successful login was from 'the user's registered laptop and usual home address'. No other failures for this account were observed in the preceding 30 days.",
+      "conclusion": "This context strongly supports the conclusion of a benign user error rather than a malicious brute-force or credential stuffing attempt."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "An attempted initial access via VPN authentication failed due to an incorrect password."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-17T08:03:00Z",
+      "attack_behavior": "Failed VPN Authentication",
+      "evidence_field": "case.source_data.child_containers[0].artifacts[0].notes[0].content"
+    },
+    {
+      "timestamp": "2026-08-17T08:04:00Z",
+      "attack_behavior": "Successful VPN Authentication (MFA-confirmed)",
+      "evidence_field": "case.source_data.child_containers[0].artifacts[0].notes[0].content"
+    }
+  ],
+  "ioc_indicators": [],
+  "remediations": [
+    {
+      "action_type": "user_education",
+      "description": "Educate user m.alvarez on password best practices and careful entry to avoid repeated failed login attempts.",
+      "priority": "low"
+    }
+  ],
+  "unknowns": []
+}

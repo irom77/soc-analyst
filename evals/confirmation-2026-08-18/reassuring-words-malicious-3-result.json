@@ -1,0 +1,136 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "Critical",
+  "confidence": "High",
+  "digest": "A database server (FIN-DB-02) was compromised via a malicious Word document launching a hidden PowerShell process. The PowerShell command downloaded and executed a payload from a suspicious external IP (203.0.113.77), which subsequently established persistent command and control communications. This activity was confirmed as unauthorized by the maintenance team.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "FIN-DB-02"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "10.20.8.42"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Malicious PowerShell Execution from Word",
+      "finding_type": "Malicious Activity",
+      "subject": "powershell.exe",
+      "evidence": "A PowerShell process (`powershell.exe`) was executed on `FIN-DB-02` with a hidden window and an encoded command. The parent process was `winword.exe`. The decoded command `IEX (New-Object Net.WebClient)` was intended to download and execute `hxxps://203.0.113.77/update.dat`.",
+      "conclusion": "The execution of PowerShell from `winword.exe` with an encoded command to download and execute an external file is highly indicative of malicious activity, likely initiated by a malicious document or macro."
+    },
+    {
+      "title": "Unauthorized Command and Control Communication",
+      "finding_type": "Network Anomaly",
+      "subject": "203.0.113.77",
+      "evidence": "Outbound network connections from `10.20.8.42` (FIN-DB-02) to `203.0.113.77` on port 443 were observed immediately after the PowerShell execution. This destination is not on the corporate allowlist and was receiving periodic connections.",
+      "conclusion": "The network connections to `203.0.113.77` correlate directly with the PowerShell activity and represent unauthorized command and control (C2) communication by a compromised host."
+    },
+    {
+      "title": "Contradiction of Routine Maintenance Claim",
+      "finding_type": "Policy Violation",
+      "subject": "FIN-DB-02",
+      "evidence": "The maintenance team explicitly confirmed that no approved work was performed on `FIN-DB-02` that would involve the observed PowerShell command or connections to `203.0.113.77`.",
+      "conclusion": "The initial case disposition claiming 'routine maintenance' is false, as confirmed by the responsible team, indicating the activity is unauthorized and malicious."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "A malicious document (likely via `winword.exe`) was used to gain initial access and execute code on `FIN-DB-02`."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "PowerShell was executed on `FIN-DB-02` to download and execute a payload."
+    },
+    {
+      "attack_stage": "Defense Evasion",
+      "description": "The PowerShell process was hidden (`-w hidden`) and the command was encoded (`-enc`) to evade detection."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The compromised host `FIN-DB-02` established persistent outbound communication with `203.0.113.77` on port 443, likely for command and control."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Malicious PowerShell execution initiated from winword.exe on FIN-DB-02.",
+      "evidence_field": "case.created_at, child_containers[0].artifacts[0].cef.processCommandLine"
+    },
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "PowerShell attempts to download and execute payload from 203.0.113.77.",
+      "evidence_field": "child_containers[0].artifacts[0].notes[0].content"
+    },
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Outbound network connections from 10.20.8.42 to 203.0.113.77 observed immediately after PowerShell execution.",
+      "evidence_field": "child_containers[1].artifacts[0].notes[0].content"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "ip_address",
+      "value": "203.0.113.77",
+      "context": "Destination IP for C2 communication and payload download."
+    },
+    {
+      "indicator_type": "url",
+      "value": "hxxps://203.0.113.77/update.dat",
+      "context": "URL for the malicious payload download."
+    },
+    {
+      "indicator_type": "command_line",
+      "value": "powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA",
+      "context": "Encoded PowerShell command used for execution."
+    },
+    {
+      "indicator_type": "command_line",
+      "value": "IEX (New-Object Net.WebClient)",
+      "context": "Decoded PowerShell command used for execution."
+    },
+    {
+      "indicator_type": "process_name",
+      "value": "winword.exe",
+      "context": "Parent process of the malicious PowerShell execution, indicating initial access vector."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Immediately isolate FIN-DB-02 (10.20.8.42) from the network to prevent further compromise or data exfiltration.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Perform a full forensic investigation of FIN-DB-02 to identify persistence mechanisms, additional malware, and scope of compromise. Remove all malicious artifacts.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Network Blocking",
+      "description": "Block IP address 203.0.113.77 at the perimeter firewall and proxy servers to prevent further C2 communication.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Threat Hunting",
+      "description": "Search for similar PowerShell execution patterns, network connections to 203.0.113.77, or `winword.exe` spawning PowerShell across the environment.",
+      "priority": "Medium"
+    },
+    {
+      "action_type": "User Account Review",
+      "description": "Identify the user account associated with the `winword.exe` process and force a password reset. Investigate for potential credential compromise.",
+      "priority": "High"
+    }
+  ],
+  "unknowns": [
+    "The specific user account involved in the `winword.exe` execution.",
+    "The exact method of initial access (e.g., specific phishing email, exploit kit, or malicious document name).",
+    "The full functionality and capabilities of the `update.dat` payload.",
+    "The extent of compromise beyond FIN-DB-02 and whether other systems are affected."
+  ]
+}
