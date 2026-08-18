@@ -10,8 +10,15 @@ items that predate the review, plus follow-ups the fixes opened up.
 Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 "Completed (2026-08-18 follow-up)" below.
 
+Planned improvement work beyond this list is tracked in
+[`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
+from the 2026-08-18 limitations review. Its eval-harness prerequisite and
+prompt-injection item are done (see "Completed" below); the remaining tiers —
+report provenance and enum verdicts, evidence citations, enrichment caching, and the
+dedicated audit mode — are open there and not duplicated here.
+
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (75 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (89 offline tests; no credentials or network needed).
 
 ## Existing
 
