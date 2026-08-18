@@ -1,5 +1,7 @@
 import io
 import json
+import threading
+import time
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -309,9 +311,20 @@ class ValidationTests(unittest.TestCase):
 
 
 class HttpJsonTests(unittest.TestCase):
-    def test_non_object_body_is_coerced_to_an_error_mapping(self):
+    def test_non_object_body_is_reported_as_absent(self):
         self.assertEqual({"a": 1}, _as_mapping({"a": 1}))
-        self.assertIn("non-object JSON body", _as_mapping(["boom"])["error"])
+        self.assertIsNone(_as_mapping(["boom"]))
+
+    def test_non_object_success_body_is_an_error_for_every_provider(self):
+        with patch("case_analyzer.enrichment.urlopen", side_effect=lambda *a, **kw: _FakeResponse(["boom"])):
+            dns = enrichment_module._domain_lookup("host.example.com", 1.0)
+            virustotal = enrichment_module._virustotal_lookup("domain", "host.example.com", 1.0, "key")
+        with patch("case_analyzer.enrichment._http_json", return_value=(200, None, "https://rdap.test/ip/8.8.8.8")):
+            rdap = enrichment_module._ip_lookup("8.8.8.8", 1.0)
+
+        for status, _, details in (dns, virustotal, rdap):
+            self.assertEqual("error", status)
+            self.assertIn("not an object", details["error"])
 
     def test_success_returns_status_body_and_answering_url(self):
         with patch(
@@ -483,6 +496,61 @@ class BudgetAndBreakerTests(unittest.TestCase):
         )
         self.assertIn("consecutive failures", result.observations[-1].details["reason"])
 
+    def test_budget_caps_the_request_timeout_and_bounds_the_wall_time(self):
+        case = normalize_case(
+            {"id": "case-34", "title": "Budget", "artifacts": [{"destinationDnsDomain": "host.example.com"}]}
+        )
+        offered = []
+
+        def slow(value, timeout):
+            offered.append(timeout)
+            time.sleep(timeout)  # a real provider gives up when its timeout expires
+            raise TimeoutError("timed out")
+
+        started = time.monotonic()
+        result = enrich_case(case, budget=0.05, timeout=30.0, concurrency=1, domain_lookup=slow)
+        elapsed = time.monotonic() - started
+
+        # Without the cap the single lookup would run for the full 30-second timeout.
+        self.assertLessEqual(offered[0], 0.05)
+        self.assertLess(elapsed, 1.0)
+        # A request the budget cut short is not evidence against the provider, so it is skipped.
+        self.assertTrue(result.stopped_early)
+        self.assertEqual("skipped", result.observations[0].lookup_status)
+        self.assertIn("time budget", result.observations[0].details["reason"])
+
+    def test_concurrent_failures_bound_the_calls_made_to_a_dead_provider(self):
+        case = normalize_case(
+            {
+                "id": "case-35",
+                "title": "Breaker",
+                "artifacts": [{"destinationDnsDomain": f"host{index}.example.com"} for index in range(12)],
+            }
+        )
+        concurrency, threshold = 3, 1
+        started = threading.Barrier(concurrency, timeout=5)
+        calls = []
+        lock = threading.Lock()
+
+        def failing(value, timeout):
+            with lock:
+                calls.append(value)
+                first_wave = len(calls) <= concurrency
+            if first_wave:
+                # Hold the first wave open, so every worker decides before any failure is recorded.
+                started.wait()
+            raise TimeoutError("provider is down")
+
+        result = enrich_case(
+            case, concurrency=concurrency, failure_threshold=threshold, domain_lookup=failing
+        )
+
+        # In-flight lookups cannot be recalled, so the worst case is one wave past the threshold.
+        self.assertLessEqual(len(calls), threshold + concurrency - 1)
+        self.assertTrue(result.stopped_early)
+        self.assertEqual(len(calls), sum(1 for item in result.observations if item.lookup_status == "error"))
+        self.assertIn("consecutive failures", result.observations[-1].details["reason"])
+
     def test_concurrent_lookups_keep_the_priority_order(self):
         case = normalize_case(
             {
@@ -545,6 +613,17 @@ class RdapBootstrapTests(unittest.TestCase):
 
         self.assertEqual(["arin-fallback", "arin-fallback"], [first["rdap_source"], second["rdap_source"]])
         self.assertEqual(1, len([url for url in requested if "data.iana.org" in url]))
+
+    def test_bootstrap_is_refetched_once_the_cache_entry_expires(self):
+        requested, fake = self._responses()
+        with patch("case_analyzer.enrichment._http_json", fake):
+            enrichment_module._ip_lookup("8.8.8.8", 1.0)
+            stamp, entries = enrichment_module._bootstrap_cache[4]
+            # Age the cached copy past its TTL instead of waiting an hour for it.
+            enrichment_module._bootstrap_cache[4] = (stamp - enrichment_module._BOOTSTRAP_TTL_SECONDS, entries)
+            enrichment_module._ip_lookup("8.8.4.4", 1.0)
+
+        self.assertEqual(2, len([url for url in requested if "data.iana.org" in url]))
 
     def test_private_addresses_are_never_looked_up(self):
         with patch("case_analyzer.enrichment._http_json", side_effect=AssertionError("no request expected")):

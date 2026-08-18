@@ -74,8 +74,9 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=60.0,
         help=(
-            "Overall wall-clock budget in seconds for all enrichment lookups; remaining "
-            "observables are recorded as skipped. Use 0 for no budget (default 60)"
+            "Overall wall-clock budget in seconds for all enrichment lookups; it also caps each "
+            "request's timeout, and observables left over are recorded as skipped. Use 0 for no "
+            "budget (default 60)"
         ),
     )
     parser.add_argument(
@@ -88,7 +89,11 @@ def _parser() -> argparse.ArgumentParser:
         "--enrichment-failure-threshold",
         type=int,
         default=3,
-        help="Stop calling a provider after this many consecutive failures (default 3)",
+        help=(
+            "Stop calling a provider after this many consecutive failed lookups; lookups already "
+            "in flight still finish, so a run can exceed it by up to one full set of workers "
+            "(default 3)"
+        ),
     )
     parser.add_argument(
         "--llm-timeout",

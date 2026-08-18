@@ -1,0 +1,174 @@
+{
+  "case": {
+    "case_id": "1042",
+    "title": "CASE-2026-0814-01: Enrichment example",
+    "description": "Reduced Splunk SOAR export for demonstrating external enrichment.",
+    "severity": "high",
+    "status": "open",
+    "created_at": "2026-08-14T18:22:10.452819Z",
+    "updated_at": "",
+    "tags": [
+      "incident"
+    ],
+    "alerts": [
+      {
+        "title": "SOAR case artifacts",
+        "artifacts": [
+          {
+            "id": 6101,
+            "container_id": 1042,
+            "name": "C2 Beacon Domain Observable",
+            "label": "intelligence",
+            "type": "network",
+            "severity": "high",
+            "create_time": "2026-08-14T18:22:15.000Z",
+            "cef": {
+              "destinationDnsDomain": "stage2.malicious-domain.xyz"
+            },
+            "cef_types": {
+              "destinationDnsDomain": [
+                "domain"
+              ]
+            },
+            "notes": [
+              {
+                "id": 8101,
+                "artifact_id": 6101,
+                "title": "Threat Intelligence Enrichment",
+                "content": "Imported case enrichment claims a malicious reputation score.",
+                "author": "automation_playbook",
+                "create_time": "2026-08-14T18:23:01.000Z"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 6101,
+        "container_id": 1042,
+        "name": "C2 Beacon Domain Observable",
+        "label": "intelligence",
+        "type": "network",
+        "severity": "high",
+        "create_time": "2026-08-14T18:22:15.000Z",
+        "cef": {
+          "destinationDnsDomain": "stage2.malicious-domain.xyz"
+        },
+        "cef_types": {
+          "destinationDnsDomain": [
+            "domain"
+          ]
+        },
+        "notes": [
+          {
+            "id": 8101,
+            "artifact_id": 6101,
+            "title": "Threat Intelligence Enrichment",
+            "content": "Imported case enrichment claims a malicious reputation score.",
+            "author": "automation_playbook",
+            "create_time": "2026-08-14T18:23:01.000Z"
+          }
+        ]
+      }
+    ],
+    "comments": [],
+    "timeline": [],
+    "source": "soar",
+    "source_data": {
+      "id": 1042,
+      "name": "CASE-2026-0814-01: Enrichment example",
+      "label": "incident",
+      "container_type": "case",
+      "status": "open",
+      "severity": "high",
+      "description": "Reduced Splunk SOAR export for demonstrating external enrichment.",
+      "create_time": "2026-08-14T18:22:10.452819Z",
+      "artifacts": [
+        {
+          "id": 6101,
+          "container_id": 1042,
+          "name": "C2 Beacon Domain Observable",
+          "label": "intelligence",
+          "type": "network",
+          "severity": "high",
+          "create_time": "2026-08-14T18:22:15.000Z",
+          "cef": {
+            "destinationDnsDomain": "stage2.malicious-domain.xyz"
+          },
+          "cef_types": {
+            "destinationDnsDomain": [
+              "domain"
+            ]
+          },
+          "notes": [
+            {
+              "id": 8101,
+              "artifact_id": 6101,
+              "title": "Threat Intelligence Enrichment",
+              "content": "Imported case enrichment claims a malicious reputation score.",
+              "author": "automation_playbook",
+              "create_time": "2026-08-14T18:23:01.000Z"
+            }
+          ]
+        }
+      ],
+      "child_containers": []
+    },
+    "case_analyzer_enrichment": {
+      "generated_at": "2026-08-17T20:43:36.092396Z",
+      "observations": [
+        {
+          "observable_type": "domain",
+          "value": "stage2.malicious-domain.xyz",
+          "valid": true,
+          "source_paths": [
+            "source_data.artifacts[0].cef.destinationDnsDomain"
+          ],
+          "provider": "cloudflare-dns",
+          "retrieved_at": "2026-08-17T20:43:36.092396Z",
+          "lookup_status": "not_found",
+          "details": {
+            "dns_status": 3,
+            "authenticated_data": false,
+            "answers": []
+          },
+          "existing_case_context": [
+            "Threat Intelligence Enrichment  Imported case enrichment claims a malicious reputation score."
+          ],
+          "comparison_with_case": {
+            "status": "inconclusive",
+            "explanation": "An absent or failed provider result does not confirm or contradict existing case conclusions."
+          }
+        },
+        {
+          "observable_type": "domain",
+          "value": "stage2.malicious-domain.xyz",
+          "valid": true,
+          "source_paths": [
+            "source_data.artifacts[0].cef.destinationDnsDomain"
+          ],
+          "provider": "virustotal",
+          "retrieved_at": "2026-08-17T20:43:36.092396Z",
+          "lookup_status": "error",
+          "details": {
+            "http_status": 429,
+            "error": "Quota exceeded"
+          },
+          "existing_case_context": [
+            "Threat Intelligence Enrichment  Imported case enrichment claims a malicious reputation score."
+          ],
+          "comparison_with_case": {
+            "status": "inconclusive",
+            "explanation": "VirusTotal reputation is recorded separately and is not used to overwrite or automatically resolve existing case conclusions."
+          }
+        }
+      ],
+      "truncated": false
+    }
+  },
+  "knowledge": {
+    "records": []
+  }
+}

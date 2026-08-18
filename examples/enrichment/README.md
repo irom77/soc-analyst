@@ -6,6 +6,12 @@ live provider run. `splunk-soar-enrichment-live-run.txt` records the command, pr
 summary, and result statuses. Together they demonstrate that analyzer-generated results
 are stored under `case.case_analyzer_enrichment` without changing imported `source_data`.
 
+`splunk-soar-enriched.2026-08-17.json` and `splunk-soar-enrichment-live-run.2026-08-17.txt`
+keep the earlier recorded run for history. They predate the 2026-08-17 review fixes, so
+they use the former `existing_case_context` field name, the `arin-rdap` provider label,
+and a VirusTotal response that succeeded. Read them as a record of what the run produced
+at the time, not as the current output shape.
+
 Regenerate it from the repository root:
 
 ```bash
@@ -31,9 +37,9 @@ as `inconclusive` rather than as evidence of benignness, and the quota error is 
 as an observation with `lookup_status: "error"` instead of aborting the run or blocking
 the other provider. The imported note claiming a malicious reputation stays separate
 under `artifact_context`, which describes the artifact that held the value rather than
-the value itself. An earlier snapshot of the same command recorded a successful
-VirusTotal response with no detections; both outcomes are normal, and provider results
-change between regenerations.
+the value itself. The earlier snapshot kept alongside it recorded a successful VirusTotal
+response with no detections; both outcomes are normal, and provider results change
+between regenerations.
 
 Only one artifact and one VirusTotal-eligible observable are present here, so a `429` is
 a public-tier quota condition rather than excessive requests from the example. When a

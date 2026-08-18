@@ -27,6 +27,11 @@ Notes for anyone reading a finding against current code:
   `--allow-enrichment-in-dry-run` is passed.
 - L-4 now uses the IANA RDAP bootstrap with an ARIN fallback, so `provider` is `rdap`
   rather than `arin-rdap`.
+- A follow-up review on 2026-08-18 found that the first fixes for H-5, M-2, and L-4 were
+  incomplete: the budget did not bound a request already under way, the bootstrap cache
+  had no expiry, and a non-object `200` body was coerced into a mapping that read as
+  `not_found` or `found` instead of an error. See "Completed (2026-08-18 follow-up)" in
+  `TODO.md` for what changed.
 
 ## How to reproduce the verification environment
 

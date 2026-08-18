@@ -115,7 +115,12 @@ _RDAP_BOOTSTRAP_URLS = {
     4: "https://data.iana.org/rdap/ipv4.json",
     6: "https://data.iana.org/rdap/ipv6.json",
 }
-_bootstrap_cache: dict[int, list[tuple[Any, str]]] = {}
+# The bootstrap registry rarely changes, so it is cached process-wide; the TTL keeps a
+# long-lived caller from pinning a stale copy, or a failed fetch, for the life of the process.
+_BOOTSTRAP_TTL_SECONDS = 3600.0
+# Floor for a request whose share of the timeout has already been spent elsewhere.
+_MIN_REQUEST_SECONDS = 0.1
+_bootstrap_cache: dict[int, tuple[float, list[tuple[Any, str]]]] = {}
 _bootstrap_lock = Lock()
 
 
@@ -309,14 +314,17 @@ def _context_snippets(value: Any) -> list[str]:
     return [item for item in dict.fromkeys(snippets) if item]
 
 
-def _as_mapping(body: Any) -> dict[str, Any]:
-    """Providers are expected to answer with a JSON object; anything else is an error."""
-    if isinstance(body, Mapping):
-        return dict(body)
-    return {"error": f"The provider returned a non-object JSON body: {str(body)[:200]}"}
+def _as_mapping(body: Any) -> dict[str, Any] | None:
+    """Providers are expected to answer with a JSON object; `None` marks anything else."""
+    return dict(body) if isinstance(body, Mapping) else None
 
 
-def _http_json(url: str, headers: dict[str, str], timeout: float) -> tuple[int, dict[str, Any], str]:
+def _malformed_body(status: int) -> dict[str, Any]:
+    return {"http_status": status, "error": "The provider returned a JSON body that is not an object."}
+
+
+def _http_json(url: str, headers: dict[str, str], timeout: float) -> tuple[int, dict[str, Any] | None, str]:
+    """Return the status, the decoded JSON object (`None` if the body is not one), and the answering URL."""
     request = Request(url, headers=headers)
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -325,8 +333,9 @@ def _http_json(url: str, headers: dict[str, str], timeout: float) -> tuple[int, 
         try:
             body = _as_mapping(json.load(exc))
         except (json.JSONDecodeError, UnicodeDecodeError):
-            body = {"error": str(exc)}
-        return exc.code, body, exc.url or url
+            body = None
+        # A malformed error body still carries its status, which is what the caller reports.
+        return exc.code, body if body is not None else {"error": str(exc)}, exc.url or url
 
 
 def _domain_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]]:
@@ -336,6 +345,8 @@ def _domain_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]
         {"Accept": "application/dns-json", "User-Agent": _USER_AGENT},
         timeout,
     )
+    if body is None:
+        return "error", "cloudflare-dns", _malformed_body(status)
     if status != 200:
         return "error", "cloudflare-dns", {"http_status": status, "error": body.get("error", "request failed")}
     answers = [
@@ -354,7 +365,10 @@ def _rdap_service_base(address: Any, timeout: float) -> str | None:
     """Resolve the RDAP base URL for an address through the IANA bootstrap registry."""
     version = address.version
     with _bootstrap_lock:
-        cached = _bootstrap_cache.get(version)
+        entry = _bootstrap_cache.get(version)
+    cached = None
+    if entry is not None and time.monotonic() - entry[0] < _BOOTSTRAP_TTL_SECONDS:
+        cached = entry[1]
     if cached is None:
         cached = []
         status, body, _ = _http_json(
@@ -362,7 +376,7 @@ def _rdap_service_base(address: Any, timeout: float) -> str | None:
             {"Accept": "application/json", "User-Agent": _USER_AGENT},
             timeout,
         )
-        services = body.get("services") if status == 200 else None
+        services = body.get("services") if status == 200 and body is not None else None
         for service in services if isinstance(services, list) else []:
             if not (isinstance(service, list) and len(service) >= 2):
                 continue
@@ -379,7 +393,7 @@ def _rdap_service_base(address: Any, timeout: float) -> str | None:
                 except ValueError:
                     continue
         with _bootstrap_lock:
-            _bootstrap_cache[version] = cached
+            _bootstrap_cache[version] = (time.monotonic(), cached)
     matches = [entry for entry in cached if address in entry[0]]
     if not matches:
         return None
@@ -390,14 +404,19 @@ def _ip_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]]:
     address = ipaddress.ip_address(value)
     if not address.is_global:
         return "skipped", "rdap", {"reason": "RDAP lookup skipped for a non-global IP address"}
+    started = time.monotonic()
     base = _rdap_service_base(address, timeout)
     source = "iana-bootstrap" if base else "arin-fallback"
+    # A bootstrap fetch and the query itself share one timeout, so the pair stays inside it.
+    remaining = max(timeout - (time.monotonic() - started), _MIN_REQUEST_SECONDS)
     status, body, answered_by = _http_json(
         f"{(base or _RDAP_FALLBACK).rstrip('/')}/ip/{quote(value, safe='')}",
         {"Accept": "application/rdap+json", "User-Agent": _USER_AGENT},
-        timeout,
+        remaining,
     )
     registry = {"rdap_authority": urlsplit(answered_by).netloc, "rdap_source": source}
+    if body is None:
+        return "error", "rdap", {**_malformed_body(status), **registry}
     if status == 404:
         return "not_found", "rdap", {"http_status": status, **registry}
     if status != 200:
@@ -433,6 +452,8 @@ def _virustotal_lookup(
         },
         timeout,
     )
+    if body is None:
+        return "error", "virustotal", _malformed_body(status)
     if status == 404:
         return "not_found", "virustotal", {"http_status": status}
     if status != 200:
@@ -569,15 +590,24 @@ def enrich_case(
     stopped_early = False
     stop_lock = Lock()
 
-    def _call(provider: str, lookup: Callable[[], tuple[str, str, dict[str, Any]]]):
+    def _budget_exhausted(provider: str):
+        nonlocal stopped_early
+        with stop_lock:
+            stopped_early = True
+        return "skipped", provider, {
+            "reason": "The overall enrichment time budget was exhausted before this lookup could finish."
+        }
+
+    def _call(provider: str, lookup: Callable[[float], tuple[str, str, dict[str, Any]]]):
         """Run one provider lookup, honoring the time budget and the circuit breaker."""
         nonlocal stopped_early
-        if deadline is not None and time.monotonic() >= deadline:
-            with stop_lock:
-                stopped_early = True
-            return "skipped", provider, {
-                "reason": "The overall enrichment time budget was exhausted before this lookup."
-            }
+        request_timeout = timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return _budget_exhausted(provider)
+            # Cap the request itself, so an in-flight lookup cannot outlive the budget.
+            request_timeout = min(timeout, remaining)
         if breaker.is_open(provider):
             with stop_lock:
                 stopped_early = True
@@ -585,8 +615,11 @@ def enrich_case(
                 "reason": f"Lookups against {provider} stopped after {failure_threshold} consecutive failures."
             }
         try:
-            status, answered_by, details = lookup()
+            status, answered_by, details = lookup(request_timeout)
         except _PROVIDER_ERRORS as exc:
+            if deadline is not None and time.monotonic() >= deadline:
+                # The budget cut the request short; that is not evidence against the provider.
+                return _budget_exhausted(provider)
             breaker.record(provider, True)
             return "error", provider, {"error": f"{type(exc).__name__}: {exc}"}
         breaker.record(provider, status == "error")
@@ -610,10 +643,12 @@ def enrich_case(
             }
         elif kind == "domain":
             lookup_status, provider, details = _call(
-                "cloudflare-dns", lambda: domain_lookup(value, timeout)
+                "cloudflare-dns", lambda request_timeout: domain_lookup(value, request_timeout)
             )
         else:
-            lookup_status, provider, details = _call("rdap", lambda: ip_lookup(value, timeout))
+            lookup_status, provider, details = _call(
+                "rdap", lambda request_timeout: ip_lookup(value, request_timeout)
+            )
         results = [
             EnrichmentObservation(
                 observable_type=kind,
@@ -633,7 +668,8 @@ def enrich_case(
         )
         if virustotal_eligible and virustotal_api_key:
             vt_status, vt_provider, vt_details = _call(
-                "virustotal", lambda: virustotal_lookup(kind, value, timeout, virustotal_api_key)
+                "virustotal",
+                lambda request_timeout: virustotal_lookup(kind, value, request_timeout, virustotal_api_key),
             )
             results.append(
                 EnrichmentObservation(

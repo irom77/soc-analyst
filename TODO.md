@@ -7,8 +7,11 @@ testing, and cleanup items first, then the behavior, extraction, and cleanup ite
 needed a UX decision. See "Completed" below. What remains is here: the three original
 items that predate the review, plus follow-ups the fixes opened up.
 
+A follow-up review on 2026-08-18 found four gaps in that work; all four are addressed in
+"Completed (2026-08-18 follow-up)" below.
+
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (59 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (63 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -20,12 +23,19 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
 
+## Completed (2026-08-18 follow-up)
+
+- [x] Make the enrichment budget a real wall-clock bound: it now caps each request's timeout as well as gating the start of a lookup, so a single lookup can no longer run for the full `--enrichment-timeout` past the deadline. A request the budget cuts short is recorded as `skipped` and is not counted against the provider (M-2 follow-up).
+- [x] State the circuit breaker's actual guarantee. The check is inherently check-then-act: lookups already dispatched are not cancelled, so a failing provider can receive up to `threshold + concurrency - 1` calls. `--help`, `README.md`, and a new concurrency test record that bound (M-2 follow-up).
+- [x] Give the RDAP bootstrap cache a one-hour TTL, and describe it as process-wide rather than per run, so a long-lived caller cannot pin a stale copy or a failed fetch indefinitely (L-4 follow-up).
+- [x] Report a non-object JSON body from a `200` response as a provider `error`. It was previously coerced to an empty mapping, which read as `not_found` for DNS and as `found` for RDAP and VirusTotal (H-5 follow-up).
+
 ## Completed (2026-08-17 review, second pass)
 
 - [x] Bound enrichment wall time with `--enrichment-budget` (default 60s), run lookups through `--enrichment-concurrency` workers (default 4), and drop a provider after `--enrichment-failure-threshold` consecutive failures. Unqueried observables are recorded as `skipped` with a reason, and the run reports `stopped_early` (M-2).
 - [x] Require `--allow-enrichment-in-dry-run` before `--enrich` may contact providers during a dry run; the stderr notice is still printed (M-5).
 - [x] Extract file hashes as a `file_hash` observable enriched through VirusTotal, and contribute the host or domain part of URL and email fields as `domain`/`ip` observables with a `#host`/`#domain` source path (H-2 follow-up).
-- [x] Resolve RDAP through the IANA bootstrap, cached per run, falling back to `rdap.arin.net`; `details.rdap_source` and `details.rdap_authority` record what happened (L-4).
+- [x] Resolve RDAP through the IANA bootstrap, cached process-wide for an hour, falling back to `rdap.arin.net`; `details.rdap_source` and `details.rdap_authority` record what happened (L-4).
 - [x] Make `generated_at` and `retrieved_at` real `datetime` fields with a `Z` serializer, removing the manual timestamp rewrite (L-10).
 - [x] Reject oversized case and knowledge files with `--max-input-bytes` (default 5 MB, `0` disables) before they are parsed or sent (L-11).
 

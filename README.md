@@ -50,7 +50,11 @@ Bound the work with `--enrichment-limit` (default `25` unique observables),
 `--enrichment-failure-threshold` (default `3` consecutive failures before a provider is
 dropped for the rest of the run). Observables that are not looked up because the budget
 ran out or a provider was dropped are still listed, with `lookup_status: "skipped"` and
-a reason, and the run reports `stopped_early: true`. The limit counts unique
+a reason, and the run reports `stopped_early: true`. The budget also caps the timeout of
+each request it starts, so a lookup cannot outlive it; a request the budget cuts short is
+recorded as `skipped` rather than counted against the provider. The failure threshold
+counts lookups that have already failed, and requests in flight are not cancelled, so a
+failing provider can receive up to one further set of concurrent lookups. The limit counts unique
 observables; VirusTotal adds a second observation for each eligible one, so the report
 can hold up to twice that many observations. When the limit truncates a run, observables
 that a provider can actually answer for are kept first, then values whose type the case
@@ -82,7 +86,8 @@ describes that surrounding object rather than the specific observable, and the s
 prompt tells the model to read it that way.
 
 IP lookups resolve the responsible registry through the IANA RDAP bootstrap
-(`data.iana.org/rdap`), which is fetched once per run and cached. If the bootstrap is
+(`data.iana.org/rdap`), which is fetched once and then cached in the process for an hour,
+so a long-lived caller refreshes it instead of pinning one copy. If the bootstrap is
 unavailable, the lookup falls back to `rdap.arin.net` and relies on its redirects.
 `details.rdap_source` records which of the two was used, and `details.rdap_authority`
 records the host that actually answered.

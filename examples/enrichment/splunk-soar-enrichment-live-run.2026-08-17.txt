@@ -1,0 +1,23 @@
+Recorded live enrichment-provider run
+=====================================
+
+Command (run from the repository root):
+
+uv run case-analyzer examples/enrichment/splunk-soar-enrichment-case.json --format soar --enrich --dry-run --output examples/enrichment/splunk-soar-enriched.json
+
+Recorded at: 2026-08-17T20:43:36.092396Z
+Exit code: 0
+
+Standard error:
+
+case-analyzer: enrichment: found=0 not_found=1 skipped=0 error=1 truncated=no
+case-analyzer: enrichment warning: virustotal failed for domain stage2.malicious-domain.xyz: HTTP 429
+
+Provider observations:
+
+cloudflare-dns: domain stage2.malicious-domain.xyz -> not_found
+virustotal: domain stage2.malicious-domain.xyz -> error HTTP 429 (Quota exceeded)
+
+This was a live external-provider run: Cloudflare DNS and VirusTotal were contacted.
+The --dry-run option prevented an LLM call; it did not disable enrichment requests.
+The VirusTotal credential is neither printed nor stored in the recorded output.
