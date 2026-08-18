@@ -192,3 +192,31 @@ changes the cost model.
 Start with Tier 1: items 1, 3, and 4 are pure additions; item 2 needs only the enum
 value decision. Item 8 deserves its own design pass against a real control set before
 any code.
+
+## Review — to be verified before implementation
+
+The plan is close to implementation-ready, but these design details should be
+resolved before work begins:
+
+1. **Keep locally generated metadata out of the model-facing schema.** Adding
+   `report_metadata` directly to `InvestigationReport` or `CaseSummary` while passing
+   that schema to `with_structured_output()` would expose the field to the model and
+   invite it to populate data that must be generated locally. Prefer a locally
+   constructed envelope such as `{report_metadata, report}`, or separate
+   model-facing response schemas from the final saved-result schemas.
+2. **Make the provenance guarantee part of the public execution path.** An optional
+   `attach_provenance()` helper does not ensure that library callers use it; they can
+   continue calling `analyze_case()` or `summarize_case()` directly. Either make the
+   public methods return the assembled result or introduce a higher-level run API and
+   state clearly which API guarantees provenance. The original-file hash must remain
+   optional for callers that supply an already-parsed case rather than a file.
+3. **Reconcile provider pacing with the enrichment budget.** At roughly one
+   VirusTotal request every 15 seconds, only a few uncached requests fit within the
+   current 60-second default budget. Define whether pacing waits consume that budget,
+   whether excess requests become `skipped`, and how scheduling prevents a paced
+   provider from starving faster providers. Atomic cache writes do not coordinate
+   request start times across processes, so cross-process pacing needs an explicit
+   lock or lease if it is intended to be stronger than best-effort.
+4. **Specify IDN normalization behavior.** Choose and document the applicable IDNA
+   standard or library (for example, modern UTS #46 processing versus Python's
+   built-in codec), because their handling of some Unicode domain names differs.
