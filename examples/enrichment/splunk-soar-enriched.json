@@ -117,7 +117,7 @@
       "child_containers": []
     },
     "case_analyzer_enrichment": {
-      "generated_at": "2026-08-17T20:43:36.092396Z",
+      "generated_at": "2026-08-18T01:40:27.166060Z",
       "observations": [
         {
           "observable_type": "domain",
@@ -127,15 +127,15 @@
             "source_data.artifacts[0].cef.destinationDnsDomain"
           ],
           "provider": "cloudflare-dns",
-          "retrieved_at": "2026-08-17T20:43:36.092396Z",
+          "retrieved_at": "2026-08-18T01:40:27.166060Z",
           "lookup_status": "not_found",
           "details": {
             "dns_status": 3,
             "authenticated_data": false,
             "answers": []
           },
-          "existing_case_context": [
-            "Threat Intelligence Enrichment  Imported case enrichment claims a malicious reputation score."
+          "artifact_context": [
+            "Threat Intelligence Enrichment Imported case enrichment claims a malicious reputation score."
           ],
           "comparison_with_case": {
             "status": "inconclusive",
@@ -150,14 +150,14 @@
             "source_data.artifacts[0].cef.destinationDnsDomain"
           ],
           "provider": "virustotal",
-          "retrieved_at": "2026-08-17T20:43:36.092396Z",
+          "retrieved_at": "2026-08-18T01:40:27.166060Z",
           "lookup_status": "error",
           "details": {
             "http_status": 429,
             "error": "Quota exceeded"
           },
-          "existing_case_context": [
-            "Threat Intelligence Enrichment  Imported case enrichment claims a malicious reputation score."
+          "artifact_context": [
+            "Threat Intelligence Enrichment Imported case enrichment claims a malicious reputation score."
           ],
           "comparison_with_case": {
             "status": "inconclusive",
@@ -165,7 +165,8 @@
           }
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "stopped_early": false
     }
   },
   "knowledge": {

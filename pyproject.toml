@@ -11,6 +11,18 @@ case-analyzer = "case_analyzer.cli:main"
 explain-case-analysis = "case_analyzer.explain_cli:main"
 explain_case_analysis = "case_analyzer.explain_cli:main"
 
+[dependency-groups]
+# The test suite uses the standard library `unittest` runner; ruff is the linter.
+dev = ["ruff>=0.14"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Pinned so the result does not depend on a developer's global ruff configuration.
+select = ["E", "F", "I", "UP", "B"]
+
 [build-system]
 requires = ["hatchling>=1.28"]
 build-backend = "hatchling.build"

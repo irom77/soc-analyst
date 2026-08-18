@@ -24,35 +24,70 @@ Inspect normalization without sending data to an LLM:
 uv run case-analyzer examples/generic-case.json --dry-run
 ```
 
-Validate and enrich IP/domain artifacts before analysis:
+Validate and enrich observables before analysis:
 
 ```bash
 uv run case-analyzer examples/splunk-soar.json \
   --format soar \
   --enrich \
-  --dry-run
+  --dry-run \
+  --allow-enrichment-in-dry-run
 ```
 
 `--enrich` performs local syntax validation, queries Cloudflare's keyless DNS-over-HTTPS
-resolver for domains, and queries ARIN RDAP for public IP registration data. When
-`VIRUSTOTAL_API_KEY` is set, it also queries VirusTotal for domain and public-IP
-reputation. Keep the key in the ignored `.env` file; without it, VirusTotal is simply
-skipped. Enrichment can be combined with `--dry-run`: external enrichment requests are
-still made, but the LLM is
-not called. Use `--enrichment-limit` (default `25`) and `--enrichment-timeout` (default
-`5` seconds per request) to bound the work.
+resolver for domains, and queries the RDAP registry that holds a public IP address for
+its registration data. When `VIRUSTOTAL_API_KEY` is set, it also queries VirusTotal for
+domain, public-IP, and file-hash reputation. Keep the key in the ignored `.env` file;
+without it, VirusTotal is simply skipped. Enrichment still contacts providers when it is
+combined with `--dry-run`, which otherwise sends no data anywhere, so that combination
+requires `--allow-enrichment-in-dry-run` and prints a notice to standard error before
+the first request.
+
+Bound the work with `--enrichment-limit` (default `25` unique observables),
+`--enrichment-timeout` (default `5` seconds per request), `--enrichment-budget` (default
+`60` seconds of wall time for all lookups; `0` disables it),
+`--enrichment-concurrency` (default `4` lookups at once), and
+`--enrichment-failure-threshold` (default `3` consecutive failures before a provider is
+dropped for the rest of the run). Observables that are not looked up because the budget
+ran out or a provider was dropped are still listed, with `lookup_status: "skipped"` and
+a reason, and the run reports `stopped_early: true`. The limit counts unique
+observables; VirusTotal adds a second observation for each eligible one, so the report
+can hold up to twice that many observations. When the limit truncates a run, observables
+that a provider can actually answer for are kept first, then values whose type the case
+declared, then values seen in more places; invalid values are dropped first.
+
+Observables are read from `cef` blocks, from `cef_types` declarations when the ingesting
+app provided them, and from recognizable field names elsewhere in the export.
+`observable_type` is `domain`, `ip`, or `file_hash`. URLs and email addresses are
+recognized and contribute their host or domain part, whose source path is marked with a
+`#host` or `#domain` suffix; the URL and the address themselves are not looked up,
+because no configured provider covers them.
 
 The generated data is kept separately under
 `case.case_analyzer_enrichment.observations`; imported artifacts, notes, comments, and
 other `source_data` are never overwritten. Each observation records its provider,
-retrieval time, source paths, lookup status, and `comparison_with_case`. DNS and RDAP
-metadata is marked `not_comparable` with existing reputation claims because resolution
-or registration data cannot establish whether an observable is malicious. In
-particular, `not_found`, a provider error, or no DNS answers must not be interpreted as
-benign; those results are `inconclusive`. Invalid syntax is `conflicting` with the
-artifact's declared IP/domain type.
+retrieval time, source paths, lookup status, `artifact_context`, and
+`comparison_with_case`. DNS and RDAP metadata is marked `not_comparable` with existing
+reputation claims because resolution or registration data cannot establish whether an
+observable is malicious. In particular, `not_found`, a provider error, no DNS answers,
+or a lookup that was never performed must not be interpreted as benign; those results
+are `inconclusive`. Invalid syntax is `conflicting` only when the case itself declared
+the value's type through `cef_types`; when the type was inferred from a field name, a
+syntax failure is reported as `not_comparable` because it reflects the extractor rather
+than a contradiction in the case.
 
-Cloudflare DNS and ARIN RDAP do not require API keys, while VirusTotal does. All are
+`artifact_context` quotes notes and comments that already contain enrichment or
+reputation claims, taken from the artifact or container that held the value. It
+describes that surrounding object rather than the specific observable, and the system
+prompt tells the model to read it that way.
+
+IP lookups resolve the responsible registry through the IANA RDAP bootstrap
+(`data.iana.org/rdap`), which is fetched once per run and cached. If the bootstrap is
+unavailable, the lookup falls back to `rdap.arin.net` and relies on its redirects.
+`details.rdap_source` records which of the two was used, and `details.rdap_authority`
+records the host that actually answered.
+
+Cloudflare DNS and RDAP do not require API keys, while VirusTotal does. All are
 external services with availability, privacy, and rate-limit considerations. Observable values are disclosed
 to the selected service. The provider calls are best-effort: a lookup failure is
 recorded on its observation and does not abort the case analysis. Every enriched run
@@ -62,12 +97,14 @@ See [`examples/enrichment/`](examples/enrichment/) for a recorded enriched paylo
 the command used to regenerate it.
 
 LLM failures stop the analysis without writing a report. Authentication failures,
-rate or quota limits, timeouts, connection failures, and provider HTTP errors are
-reported as concise `case-analyzer: LLM error:` messages without printing credentials
-or request payloads. Automatic LLM retries are disabled to avoid unplanned cost and
-additional rate-limit pressure. Exit codes are `2` for input/configuration errors, `3`
-for authentication, `4` for rate/quota limits, `5` for timeout/connection failures,
-and `6` for other provider errors.
+rate or quota limits, timeouts, connection failures, provider HTTP errors, and model
+responses that do not match the `InvestigationReport` schema are reported as concise
+`case-analyzer: LLM error:` messages without printing credentials, request payloads, or
+raw model output. A missing model or API key is reported before any request is sent.
+Automatic LLM retries are disabled to avoid unplanned cost and additional rate-limit
+pressure; `--llm-timeout` (default `120` seconds) bounds a single request. Exit codes
+are `2` for input/configuration errors, `3` for authentication, `4` for rate/quota
+limits, `5` for timeout/connection failures, and `6` for other provider errors.
 
 Add `--explain` to print normalization plus the exact system and human messages before
 the result:
@@ -155,10 +192,12 @@ accepts only 128,000 tokens or limits request bodies to 5 MB.
 
 The practical limit is whichever applicable limit is reached first: the model limit,
 the gateway or proxy limit, the provider account tier, or a limit configured by the
-analyzer. The analyzer currently does not impose its own token limit or automatically
-truncate oversized input. Consult the documentation for both the selected model and
-the service named by `CASE_ANALYZER_BASE_URL` when sizing case, knowledge, and
-enrichment payloads.
+analyzer. The analyzer imposes no token limit and never truncates oversized input
+automatically, but `--max-input-bytes` (default `5000000`, `0` disables it) rejects
+oversized case and knowledge files locally instead of letting the gateway reject the
+request after the data has been sent. That byte limit is not a token limit: consult the
+documentation for both the selected model and the service named by
+`CASE_ANALYZER_BASE_URL` when sizing case, knowledge, and enrichment payloads.
 
 ## Run the reasoning examples
 
@@ -177,6 +216,17 @@ By default, full structured reports are written to a temporary directory whose p
 ```
 
 Each run makes three live LLM calls and may incur provider charges. See the [reasoning examples and recorded comparison](examples/reasoning/README.md) for the scenarios, expectations, limitations, and results from a recorded run.
+
+## Develop and test
+
+The suite is offline: provider callables and the LLM client are stubbed, so no request
+is sent and no credentials are needed.
+
+```bash
+uv sync
+uv run python -m unittest discover -s tests -t .
+uv run ruff check src tests
+```
 
 ## Input formats
 
@@ -200,4 +250,4 @@ This repository is distributed under the MIT License. See [LICENSE](LICENSE) for
 
 ## Privacy and safety
 
-The non-dry-run command sends the normalized case, original `source_data`, optional enrichment, knowledge, and analyst input to the configured model provider. `--enrich` also sends extracted domains to Cloudflare DNS and public IPs to ARIN RDAP, even when combined with `--dry-run`. Remove secrets and unnecessary personal data, and use providers approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.
+The non-dry-run command sends the normalized case, original `source_data`, optional enrichment, knowledge, and analyst input to the configured model provider. `--enrich` also sends extracted domains to Cloudflare DNS, public IPs to the RDAP registries, and, when a key is configured, domains, public IPs, and file hashes to VirusTotal. It does so even when combined with `--dry-run`, which is why that combination must be confirmed with `--allow-enrichment-in-dry-run` and prints a notice to standard error before the first request. Remove secrets and unnecessary personal data, and use providers approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.

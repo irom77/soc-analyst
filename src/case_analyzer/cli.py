@@ -12,7 +12,18 @@ from .analyzer import LLMProviderError, analyze_case, build_analysis_messages, b
 from .enrichment import enrich_case
 
 
-def _json_file(path: Path):
+def _json_file(path: Path, max_bytes: int = 0):
+    if max_bytes:
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise ValueError(f"Could not read JSON from {path}: {exc}") from exc
+        if size > max_bytes:
+            raise ValueError(
+                f"{path} is {size / 1_000_000:.1f} MB, above the {max_bytes / 1_000_000:.1f} MB "
+                "input limit. Reduce the export or raise --max-input-bytes; note that the "
+                "configured gateway may enforce a smaller limit of its own."
+            )
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -38,10 +49,59 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enrich",
         action="store_true",
-        help="Validate IP/domain artifacts and query free keyless DNS/RDAP providers",
+        help="Validate observables and query free keyless DNS/RDAP providers",
     )
-    parser.add_argument("--enrichment-limit", type=int, default=25, help="Maximum unique observables to enrich")
+    parser.add_argument(
+        "--allow-enrichment-in-dry-run",
+        action="store_true",
+        help=(
+            "Permit --enrich to contact providers while --dry-run is set. Without this flag the "
+            "combination is refused, because a dry run otherwise sends no data anywhere."
+        ),
+    )
+    parser.add_argument(
+        "--enrichment-limit",
+        type=int,
+        default=25,
+        help=(
+            "Maximum unique observables to enrich. VirusTotal adds a second observation per "
+            "eligible observable, so the report can hold up to twice this many observations."
+        ),
+    )
     parser.add_argument("--enrichment-timeout", type=float, default=5.0, help="Timeout per provider request in seconds")
+    parser.add_argument(
+        "--enrichment-budget",
+        type=float,
+        default=60.0,
+        help=(
+            "Overall wall-clock budget in seconds for all enrichment lookups; remaining "
+            "observables are recorded as skipped. Use 0 for no budget (default 60)"
+        ),
+    )
+    parser.add_argument(
+        "--enrichment-concurrency",
+        type=int,
+        default=4,
+        help="Number of enrichment lookups to run at once (default 4)",
+    )
+    parser.add_argument(
+        "--enrichment-failure-threshold",
+        type=int,
+        default=3,
+        help="Stop calling a provider after this many consecutive failures (default 3)",
+    )
+    parser.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=120.0,
+        help="Timeout in seconds for the LLM request (default 120)",
+    )
+    parser.add_argument(
+        "--max-input-bytes",
+        type=int,
+        default=5_000_000,
+        help="Reject case and knowledge files larger than this. Use 0 for no limit (default 5000000)",
+    )
     return parser
 
 
@@ -55,7 +115,7 @@ def _print_json(value) -> None:
 
 def _explain(case, knowledge, knowledge_path, user_input) -> None:
     _heading("1. Normalize the exported Case")
-    _print_json(case.model_dump(exclude_none=True))
+    _print_json(case.model_dump(mode="json", exclude_none=True))
 
     _heading("2. Add supplied Knowledge context")
     if knowledge_path:
@@ -78,9 +138,17 @@ def _report_enrichment(enrichment) -> None:
         "case-analyzer: enrichment: "
         f"found={counts['found']} not_found={counts['not_found']} "
         f"skipped={counts['skipped']} error={counts['error']} "
-        f"truncated={'yes' if enrichment.truncated else 'no'}",
+        f"truncated={'yes' if enrichment.truncated else 'no'} "
+        f"stopped_early={'yes' if enrichment.stopped_early else 'no'}",
         file=sys.stderr,
     )
+    if enrichment.stopped_early:
+        print(
+            "case-analyzer: enrichment warning: lookups stopped early; the time budget was "
+            "exhausted or a provider failed repeatedly. Affected observables are recorded as "
+            "skipped with a reason.",
+            file=sys.stderr,
+        )
     for item in enrichment.observations:
         if item.lookup_status != "error":
             continue
@@ -97,18 +165,36 @@ def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     try:
         load_dotenv()
-        case = normalize_case(_json_file(args.input), args.format)
+        case = normalize_case(_json_file(args.input, args.max_input_bytes), args.format)
+        # Read and validate every input file before enrichment, so a malformed
+        # knowledge file cannot waste provider calls and quota.
+        knowledge = _json_file(args.knowledge, args.max_input_bytes) if args.knowledge else []
+        if not isinstance(knowledge, list):
+            raise ValueError("The knowledge file must contain a JSON array.")
         if args.enrich:
+            if args.dry_run and not args.allow_enrichment_in_dry_run:
+                raise ValueError(
+                    "--enrich contacts external providers and discloses observable values to them, "
+                    "which --dry-run otherwise avoids. Pass --allow-enrichment-in-dry-run to accept "
+                    "that, or drop --enrich."
+                )
+            if args.dry_run:
+                print(
+                    "case-analyzer: --enrich sends observable values to Cloudflare DNS, the RDAP "
+                    "registries, and, when a key is configured, VirusTotal even with --dry-run; "
+                    "only the LLM call is skipped.",
+                    file=sys.stderr,
+                )
             enrichment = enrich_case(
                 case,
                 limit=args.enrichment_limit,
                 timeout=args.enrichment_timeout,
+                budget=args.enrichment_budget or None,
+                concurrency=args.enrichment_concurrency,
+                failure_threshold=args.enrichment_failure_threshold,
                 virustotal_api_key=os.getenv("VIRUSTOTAL_API_KEY"),
             )
             _report_enrichment(enrichment)
-        knowledge = _json_file(args.knowledge) if args.knowledge else []
-        if not isinstance(knowledge, list):
-            raise ValueError("The knowledge file must contain a JSON array.")
         if args.explain:
             _explain(case, knowledge, args.knowledge, args.user_input)
         if args.dry_run:
@@ -126,6 +212,7 @@ def main(argv=None) -> int:
                 model=args.model,
                 base_url=args.base_url,
                 api_key=args.api_key,
+                timeout=args.llm_timeout,
             ).model_dump()
         rendered = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:

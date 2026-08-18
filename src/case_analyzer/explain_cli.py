@@ -7,7 +7,10 @@ from .cli import main as case_analyzer_main
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Preview, and optionally run, the standalone case-analysis workflow."
+        description=(
+            "Deprecated alias for `case-analyzer --explain`. It forwards neither --output nor "
+            "--enrich; use case-analyzer directly when either is needed."
+        )
     )
     parser.add_argument("input", type=Path, help="Case export JSON file")
     parser.add_argument("--format", choices=("auto", "generic", "soar"), default="auto")

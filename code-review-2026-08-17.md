@@ -7,14 +7,36 @@ requests). This file is a handoff record: each finding states the symptom, the l
 verification, and a recommended direction, so it can be picked up without re-deriving the
 analysis.
 
+## Status
+
+The findings below describe the code as it was at `5020fd8`. They were implemented on
+2026-08-17; the body of this file is left unchanged as the record of what was found.
+
+| Resolved | Open |
+| --- | --- |
+| H-1, H-2, H-3, H-4, H-5, M-1, M-2, M-3, M-4, M-5, M-6, M-8, L-1, L-2, L-3, L-4, L-6, L-7, L-8, L-9, L-10, L-11 | M-7 and L-5, which were already `TODO.md` items before the review |
+
+Notes for anyone reading a finding against current code:
+
+- H-4 was resolved by the "rename" option: the field is `artifact_context`, and the
+  system prompt states that it describes the containing artifact rather than the value.
+- H-2's hash hints produce a `file_hash` observable enriched through VirusTotal; URL and
+  email hints contribute their host or domain part, whose source path carries a `#host`
+  or `#domain` suffix. The URL and address themselves are still not looked up.
+- M-5 was resolved by the stricter option: `--enrich` with `--dry-run` is refused unless
+  `--allow-enrichment-in-dry-run` is passed.
+- L-4 now uses the IANA RDAP bootstrap with an ARIN fallback, so `provider` is `rdap`
+  rather than `arin-rdap`.
+
 ## How to reproduce the verification environment
 
 ```bash
 uv sync
-uv run python -m unittest tests.test_cli tests.test_enrichment -v   # 8 tests, all pass
+uv run python -m unittest discover -s tests -t .
 ```
 
-Note that `uv run python -m unittest discover -s tests -t .` fails (see L-7). Enrichment
+At the reviewed commit that discovery command failed (see L-7) and the explicit module
+form `uv run python -m unittest tests.test_cli tests.test_enrichment` was needed. Enrichment
 findings were reproduced by calling `case_analyzer.enrichment` directly with stub
 `domain_lookup` / `ip_lookup` callables, which avoids all network access.
 

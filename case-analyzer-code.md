@@ -244,7 +244,7 @@ sent to the model, although the actual message is serialized as compact JSON.
 | Endpoint | `--base-url` or function argument | `CASE_ANALYZER_BASE_URL` | `OPENAI_BASE_URL` |
 | Key | `--api-key` or function argument | `CASE_ANALYZER_API_KEY` | `OPENAI_API_KEY` |
 
-The model name is mandatory. The endpoint is optional for the default OpenAI endpoint. In normal use, credentials should be supplied through environment variables instead of command history.
+The model name and the API key are both mandatory; each is checked before any request is sent, so a missing one is reported as an input/configuration error rather than an opaque provider failure. The endpoint is optional for the default OpenAI endpoint. In normal use, credentials should be supplied through environment variables instead of command history.
 
 The function constructs `ChatOpenAI` with temperature zero and then calls:
 
@@ -274,7 +274,7 @@ flowchart LR
     Payload --> Print[Print or write JSON]
 ```
 
-Use it to confirm field mapping and inspect exactly which case and knowledge data would be included. A dry-run does not load credentials and does not send data over the network.
+Use it to confirm field mapping and inspect exactly which case and knowledge data would be included. A dry-run does not load credentials and does not contact the model provider. Adding `--enrich` does contact the enrichment providers, so the CLI refuses that combination unless `--allow-enrichment-in-dry-run` is also passed, and prints a notice to standard error before the first request.
 
 ```bash
 cd soc-analyst
@@ -294,7 +294,7 @@ The CLI reports these expected input/configuration problems with exit code `2`:
 - an unsupported format;
 - missing model configuration.
 
-Provider connection failures and structured-response failures currently propagate with their underlying exception and traceback. That is useful during this educational stage because it preserves diagnostic detail. A production wrapper may catch, classify, log, and retry those errors according to its own operational policy.
+Provider failures are classified and reported as `case-analyzer: LLM error:` messages with their own exit codes: `3` for authentication, `4` for rate or quota limits, `5` for timeouts and connection failures, and `6` for other provider errors, including a structured response that does not match `InvestigationReport`. The messages omit credentials, request payloads, and raw model output; the underlying exception is retained as the `__cause__` for a production wrapper that wants to log, classify, or retry according to its own operational policy.
 
 ## Independence from the Django worker
 

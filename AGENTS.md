@@ -18,6 +18,7 @@
 
 ## Verification and examples
 
+- Run `uv run python -m unittest discover -s tests -t .` and `uv run ruff check src tests` before committing code changes.
 - Use `--dry-run` or an equivalent preview when verifying behavior without contacting an LLM.
 - Run live examples only when the task calls for provider-backed verification and credentials are configured.
 - Preserve original case exports and recorded example results unless the user explicitly requests that they be updated.

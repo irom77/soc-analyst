@@ -3,21 +3,33 @@ Recorded live enrichment-provider run
 
 Command (run from the repository root):
 
-uv run case-analyzer examples/enrichment/splunk-soar-enrichment-case.json --format soar --enrich --dry-run --output examples/enrichment/splunk-soar-enriched.json
+uv run case-analyzer examples/enrichment/splunk-soar-enrichment-case.json --format soar --enrich --dry-run --allow-enrichment-in-dry-run --output examples/enrichment/splunk-soar-enriched.json
 
-Recorded at: 2026-08-17T20:43:36.092396Z
+Recorded at: 2026-08-18T01:40:27.166060Z
 Exit code: 0
 
 Standard error:
 
-case-analyzer: enrichment: found=0 not_found=1 skipped=0 error=1 truncated=no
+case-analyzer: --enrich sends observable values to Cloudflare DNS, the RDAP registries, and, when a key is configured, VirusTotal even with --dry-run; only the LLM call is skipped.
+case-analyzer: enrichment: found=0 not_found=1 skipped=0 error=1 truncated=no stopped_early=no
 case-analyzer: enrichment warning: virustotal failed for domain stage2.malicious-domain.xyz: HTTP 429
 
 Provider observations:
 
-cloudflare-dns: domain stage2.malicious-domain.xyz -> not_found
-virustotal: domain stage2.malicious-domain.xyz -> error HTTP 429 (Quota exceeded)
+cloudflare-dns: domain stage2.malicious-domain.xyz -> not_found (DNS status 3, no answers)
+virustotal: domain stage2.malicious-domain.xyz -> error (HTTP 429, quota exceeded)
 
-This was a live external-provider run: Cloudflare DNS and VirusTotal were contacted.
-The --dry-run option prevented an LLM call; it did not disable enrichment requests.
-The VirusTotal credential is neither printed nor stored in the recorded output.
+Neither result is a verdict. The absent DNS answer is recorded as `inconclusive`, not as
+evidence that the domain is benign, and the VirusTotal quota error is recorded on its own
+observation rather than aborting the run. The imported note claiming a malicious
+reputation is preserved separately as `artifact_context`.
+
+`stopped_early` is `no`: the single failure did not reach the consecutive-failure
+threshold, and the overall time budget was not exhausted. A run that trips either one
+records the remaining observables as `skipped` with a reason and reports
+`stopped_early=yes`.
+
+This was a live external-provider run: Cloudflare DNS and VirusTotal were contacted. No
+RDAP request was made, because the reduced case contains no public IP address. The
+--dry-run option prevented an LLM call; it did not disable enrichment requests. The
+VirusTotal credential is neither printed nor stored in the recorded output.

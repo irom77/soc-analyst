@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from case_analyzer import cli, explain_cli
@@ -55,6 +56,58 @@ class ExplainCliTests(unittest.TestCase):
             errors.getvalue(),
         )
 
+    def test_output_file_receives_the_result_json(self):
+        target = Path(self.directory.name) / "report.json"
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = cli.main([str(self.case_path), "--dry-run", "--output", str(target)])
+
+        self.assertEqual(0, status)
+        self.assertEqual("", output.getvalue())
+        self.assertEqual("Example", json.loads(target.read_text(encoding="utf-8"))["case"]["title"])
+
+    def test_malformed_knowledge_file_is_rejected_before_enrichment_runs(self):
+        knowledge_path = Path(self.directory.name) / "knowledge.json"
+        knowledge_path.write_text(json.dumps({"not": "an array"}), encoding="utf-8")
+        errors = io.StringIO()
+        with patch("case_analyzer.cli.enrich_case") as enrich, redirect_stderr(errors):
+            status = cli.main(
+                [
+                    str(self.case_path),
+                    "--enrich",
+                    "--dry-run",
+                    "--allow-enrichment-in-dry-run",
+                    "--knowledge",
+                    str(knowledge_path),
+                ]
+            )
+
+        self.assertEqual(2, status)
+        enrich.assert_not_called()
+        self.assertIn("must contain a JSON array", errors.getvalue())
+
+    def test_dry_run_refuses_enrichment_without_an_explicit_opt_in(self):
+        errors = io.StringIO()
+        with patch("case_analyzer.cli.enrich_case") as enrich, redirect_stderr(errors):
+            status = cli.main([str(self.case_path), "--enrich", "--dry-run"])
+
+        self.assertEqual(2, status)
+        enrich.assert_not_called()
+        self.assertIn("--allow-enrichment-in-dry-run", errors.getvalue())
+
+    def test_dry_run_opt_in_warns_that_providers_are_still_contacted(self):
+        output = io.StringIO()
+        errors = io.StringIO()
+        with patch("case_analyzer.cli.enrich_case") as enrich:
+            enrich.return_value = SimpleNamespace(observations=[], truncated=False, stopped_early=False)
+            with redirect_stdout(output), redirect_stderr(errors):
+                status = cli.main(
+                    [str(self.case_path), "--enrich", "--dry-run", "--allow-enrichment-in-dry-run"]
+                )
+
+        self.assertEqual(0, status)
+        self.assertIn("even with --dry-run", errors.getvalue())
+
     def test_enrichment_prints_summary_without_corrupting_json_stdout(self):
         self.case_path.write_text(
             json.dumps({"id": "1", "title": "Example", "destinationAddress": "999.1.1.1"}),
@@ -63,11 +116,29 @@ class ExplainCliTests(unittest.TestCase):
         output = io.StringIO()
         errors = io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
-            status = cli.main([str(self.case_path), "--enrich", "--dry-run"])
+            status = cli.main(
+                [str(self.case_path), "--enrich", "--dry-run", "--allow-enrichment-in-dry-run"]
+            )
 
         self.assertEqual(0, status)
         json.loads(output.getvalue())
         self.assertIn("found=0 not_found=0 skipped=1 error=0", errors.getvalue())
+        self.assertIn("stopped_early=no", errors.getvalue())
+
+    def test_oversized_input_is_rejected_before_it_is_parsed(self):
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            status = cli.main([str(self.case_path), "--dry-run", "--max-input-bytes", "10"])
+
+        self.assertEqual(2, status)
+        self.assertIn("input limit", errors.getvalue())
+
+    def test_size_limit_can_be_disabled(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = cli.main([str(self.case_path), "--dry-run", "--max-input-bytes", "0"])
+
+        self.assertEqual(0, status)
 
 
 if __name__ == "__main__":
