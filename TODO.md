@@ -46,7 +46,7 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `render_payload_message` in `analyzer.py`. The prompt rule alone fixed the verdict
   override and the attacker-IOC compliance but leaked the digest canary in 1 of 3
   samples; with the delimiters all injection samples pass. Recorded re-runs live in
-  `evals/hardening-2026-08-18/`.
+  `evals/results/`.
 
 ## Completed (2026-08-18 eval harness)
 

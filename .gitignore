@@ -9,3 +9,7 @@ build/
 reasoning-results/
 investigation-report.json
 examples/unknown.json
+
+# Transient eval benchmark output; recorded runs are committed under evals/results/
+eval-results*/
+eval-results*.log
