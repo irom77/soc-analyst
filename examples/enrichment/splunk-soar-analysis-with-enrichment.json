@@ -1,0 +1,85 @@
+{
+  "verdict": "Suspicious",
+  "severity": "High",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "Medium",
+  "digest": "A domain identified as a potential Command and Control (C2) beacon has been flagged with high severity. While internal intelligence claims a malicious reputation, external DNS lookups were inconclusive. Further investigation is required to confirm active compromise and communication with this domain.",
+  "affected_assets": [
+    {
+      "asset_type": "domain",
+      "asset_value": "stage2.malicious-domain.xyz"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "C2 Beacon Domain Identified",
+      "finding_type": "Alert/Artifact",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "Case artifact 6101 identifies 'destinationDnsDomain: stage2.malicious-domain.xyz' as a 'C2 Beacon Domain Observable' with high severity.",
+      "conclusion": "The domain stage2.malicious-domain.xyz is suspected to be a Command and Control server."
+    },
+    {
+      "title": "Claimed Malicious Reputation",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "Artifact note 8101 states 'Imported case enrichment claims a malicious reputation score.'",
+      "conclusion": "Internal intelligence suggests stage2.malicious-domain.xyz has a malicious reputation."
+    },
+    {
+      "title": "Inconclusive DNS Resolution",
+      "finding_type": "External Enrichment",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "Cloudflare DNS lookup for stage2.malicious-domain.xyz resulted in 'lookup_status: not_found' and 'dns_status: 3' (NXDOMAIN).",
+      "conclusion": "External DNS resolution did not confirm or deny the active status or maliciousness of the domain. This could indicate the domain is inactive or was taken down."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Command and Control",
+      "description": "Identification of a domain (stage2.malicious-domain.xyz) suspected of being used as a C2 beacon."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:22:15.000Z",
+      "attack_behavior": "C2 Beacon Domain Artifact Created",
+      "evidence_field": "case.artifacts[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "Threat Intelligence Enrichment Note Added",
+      "evidence_field": "case.artifacts[0].notes[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "Identified as a C2 Beacon Domain Observable."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Network Block",
+      "description": "Block stage2.malicious-domain.xyz at network perimeter firewalls and DNS resolvers.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Host Investigation",
+      "description": "Search internal network logs (DNS, proxy, firewall) for any communication attempts to stage2.malicious-domain.xyz from internal assets.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Threat Hunt",
+      "description": "Proactively hunt for indicators of compromise (IOCs) related to potential C2 activity on endpoints.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "Whether any internal assets have successfully communicated with stage2.malicious-domain.xyz.",
+    "The specific malware or threat actor associated with this C2 domain.",
+    "The exact details of the 'malicious reputation score' claimed by internal enrichment.",
+    "The current operational status of stage2.malicious-domain.xyz (e.g., active, inactive, sinkholed)."
+  ]
+}

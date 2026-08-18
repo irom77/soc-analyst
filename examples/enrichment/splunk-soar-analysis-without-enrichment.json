@@ -1,0 +1,61 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "High",
+  "digest": "A C2 beacon domain, stage2.malicious-domain.xyz, has been identified with a malicious reputation, indicating potential Command and Control activity. Further investigation is required to determine if any internal assets have communicated with this domain.",
+  "affected_assets": [
+    {
+      "asset_type": "domain",
+      "asset_value": "stage2.malicious-domain.xyz"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Malicious C2 Beacon Domain Identified",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "Artifact 6101 is labeled 'C2 Beacon Domain Observable' with high severity. A note (ID 8101) explicitly states 'Imported case enrichment claims a malicious reputation score.'",
+      "conclusion": "The domain stage2.malicious-domain.xyz is confirmed to be a malicious Command and Control (C2) beacon based on threat intelligence."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Command and Control",
+      "description": "A malicious domain identified as a C2 beacon is used for communication with compromised systems."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:22:15.000Z",
+      "attack_behavior": "Identification of C2 beacon domain artifact.",
+      "evidence_field": "case.artifacts[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "Threat intelligence enrichment confirms malicious reputation.",
+      "evidence_field": "case.artifacts[0].notes[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "Identified as a C2 beacon domain with a malicious reputation."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Network Block",
+      "description": "Block stage2.malicious-domain.xyz at network perimeter firewalls and DNS resolvers to prevent any potential C2 communication.",
+      "priority": "High"
+    }
+  ],
+  "unknowns": [
+    "Whether any internal assets have successfully communicated with stage2.malicious-domain.xyz.",
+    "The initial compromise vector that would lead to C2 communication.",
+    "The specific malware or threat actor associated with this C2 domain.",
+    "The extent of potential compromise within the environment."
+  ]
+}

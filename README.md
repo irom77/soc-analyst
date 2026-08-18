@@ -10,6 +10,10 @@ For a complete nested-container example and recorded live LLM output, see the [S
 
 For contrasting cases that exercise evidence-oriented reasoning rather than keyword matching, see the [reasoning examples and recorded comparison](examples/reasoning/README.md).
 
+For examples that use case-specific `--user-input` to perform evidence-quality,
+closure-readiness, and response-process reviews, see the
+[case-audit guidance examples](examples/user-input-case-audit/README.md).
+
 ## Run it
 
 From this directory, create the isolated environment:

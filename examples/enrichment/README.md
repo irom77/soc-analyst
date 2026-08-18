@@ -6,11 +6,17 @@ live provider run. `splunk-soar-enrichment-live-run.txt` records the command, pr
 summary, and result statuses. Together they demonstrate that analyzer-generated results
 are stored under `case.case_analyzer_enrichment` without changing imported `source_data`.
 
-`splunk-soar-enriched.2026-08-17.json` and `splunk-soar-enrichment-live-run.2026-08-17.txt`
-keep the earlier recorded run for history. They predate the 2026-08-17 review fixes, so
-they use the former `existing_case_context` field name, the `arin-rdap` provider label,
-and a VirusTotal response that succeeded. Read them as a record of what the run produced
-at the time, not as the current output shape.
+For the effect on the LLM report, see [`comparison.md`](comparison.md) and its recorded
+[`without-enrichment`](splunk-soar-analysis-without-enrichment.json) and
+[`with-enrichment`](splunk-soar-analysis-with-enrichment.json) results. Both reports use
+the same input case; only the second command enables `--enrich`.
+
+`history/splunk-soar-enriched.2026-08-17.json` and
+`history/splunk-soar-enrichment-live-run.2026-08-17.txt` keep the earlier recorded run
+for history. They predate the 2026-08-17 review fixes, so they use the former
+`existing_case_context` field name, the `arin-rdap` provider label, and a VirusTotal
+response that succeeded. Read them as a record of what the run produced at the time,
+not as the current output shape.
 
 Regenerate it from the repository root:
 
@@ -37,7 +43,8 @@ as `inconclusive` rather than as evidence of benignness, and the quota error is 
 as an observation with `lookup_status: "error"` instead of aborting the run or blocking
 the other provider. The imported note claiming a malicious reputation stays separate
 under `artifact_context`, which describes the artifact that held the value rather than
-the value itself. The earlier snapshot kept alongside it recorded a successful VirusTotal
+the value itself. The earlier snapshot kept in `examples/enrichment/history` recorded a
+successful VirusTotal
 response with no detections; both outcomes are normal, and provider results change
 between regenerations.
 
@@ -46,3 +53,23 @@ a public-tier quota condition rather than excessive requests from the example. W
 provider fails repeatedly within one run, `--enrichment-failure-threshold` stops calling
 it and the remaining observables are recorded as `skipped` with a reason, which the
 summary reports as `stopped_early=yes`.
+
+## Compare analysis results
+
+The following commands create new reports without replacing the committed comparison:
+
+```bash
+uv run case-analyzer examples/enrichment/splunk-soar-enrichment-case.json \
+  --format soar \
+  --output /tmp/case-analysis-without-enrichment.json
+
+uv run case-analyzer examples/enrichment/splunk-soar-enrichment-case.json \
+  --format soar \
+  --enrich \
+  --output /tmp/case-analysis-with-enrichment.json
+```
+
+These are live runs. Each command makes an LLM request, and the second also sends the
+observable to configured enrichment providers. Results can vary with model sampling and
+changing provider data, so compare evidence use and claim attribution as well as the
+top-level verdict.
