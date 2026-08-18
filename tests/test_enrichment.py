@@ -625,6 +625,44 @@ class RdapBootstrapTests(unittest.TestCase):
 
         self.assertEqual(2, len([url for url in requested if "data.iana.org" in url]))
 
+    def test_query_is_not_started_when_the_bootstrap_used_the_whole_timeout(self):
+        requested, fake = self._responses()
+
+        def slow_bootstrap(url, headers, timeout):
+            if "data.iana.org" in url:
+                time.sleep(timeout)
+            return fake(url, headers, timeout)
+
+        with patch("case_analyzer.enrichment._http_json", slow_bootstrap):
+            with self.assertRaises(TimeoutError):
+                enrichment_module._ip_lookup("8.8.8.8", 0.05)
+
+        # Starting the query with a floor timeout would have run past the caller's bound.
+        self.assertEqual([], [url for url in requested if "/ip/" in url])
+
+    def test_concurrent_cold_lookups_share_one_bootstrap_fetch(self):
+        requested, fake = self._responses()
+        ready = threading.Barrier(2, timeout=5)
+
+        def slow_bootstrap(url, headers, timeout):
+            if "data.iana.org" in url:
+                time.sleep(0.05)  # hold the fetch open long enough for the second thread to arrive
+            return fake(url, headers, timeout)
+
+        def run():
+            ready.wait()
+            enrichment_module._ip_lookup("8.8.8.8", 5.0)
+
+        with patch("case_analyzer.enrichment._http_json", slow_bootstrap):
+            threads = [threading.Thread(target=run) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual(1, len([url for url in requested if "data.iana.org" in url]))
+        self.assertEqual(2, len([url for url in requested if "/ip/" in url]))
+
     def test_private_addresses_are_never_looked_up(self):
         with patch("case_analyzer.enrichment._http_json", side_effect=AssertionError("no request expected")):
             status, provider, details = enrichment_module._ip_lookup("10.20.4.115", 1.0)

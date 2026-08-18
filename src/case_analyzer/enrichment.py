@@ -118,10 +118,10 @@ _RDAP_BOOTSTRAP_URLS = {
 # The bootstrap registry rarely changes, so it is cached process-wide; the TTL keeps a
 # long-lived caller from pinning a stale copy, or a failed fetch, for the life of the process.
 _BOOTSTRAP_TTL_SECONDS = 3600.0
-# Floor for a request whose share of the timeout has already been spent elsewhere.
-_MIN_REQUEST_SECONDS = 0.1
 _bootstrap_cache: dict[int, tuple[float, list[tuple[Any, str]]]] = {}
 _bootstrap_lock = Lock()
+# Held across a fetch, so one cold lookup per address family does the work for the rest.
+_bootstrap_fetch_locks = {4: Lock(), 6: Lock()}
 
 
 class _Observable(NamedTuple):
@@ -361,39 +361,53 @@ def _domain_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]
     }
 
 
+def _cached_bootstrap(version: int) -> list[tuple[Any, str]] | None:
+    with _bootstrap_lock:
+        entry = _bootstrap_cache.get(version)
+    if entry is None or time.monotonic() - entry[0] >= _BOOTSTRAP_TTL_SECONDS:
+        return None
+    return entry[1]
+
+
+def _fetch_bootstrap(version: int, timeout: float) -> list[tuple[Any, str]]:
+    """Read the bootstrap registry into (network, base URL) pairs; an empty list means fall back."""
+    entries: list[tuple[Any, str]] = []
+    status, body, _ = _http_json(
+        _RDAP_BOOTSTRAP_URLS[version],
+        {"Accept": "application/json", "User-Agent": _USER_AGENT},
+        timeout,
+    )
+    services = body.get("services") if status == 200 and body is not None else None
+    for service in services if isinstance(services, list) else []:
+        if not (isinstance(service, list) and len(service) >= 2):
+            continue
+        prefixes, urls = service[0], service[1]
+        base = next(
+            (item for item in urls if isinstance(item, str) and item.startswith("https://")),
+            None,
+        )
+        if not base:
+            continue
+        for prefix in prefixes if isinstance(prefixes, list) else []:
+            try:
+                entries.append((ipaddress.ip_network(str(prefix)), base))
+            except ValueError:
+                continue
+    return entries
+
+
 def _rdap_service_base(address: Any, timeout: float) -> str | None:
     """Resolve the RDAP base URL for an address through the IANA bootstrap registry."""
     version = address.version
-    with _bootstrap_lock:
-        entry = _bootstrap_cache.get(version)
-    cached = None
-    if entry is not None and time.monotonic() - entry[0] < _BOOTSTRAP_TTL_SECONDS:
-        cached = entry[1]
+    cached = _cached_bootstrap(version)
     if cached is None:
-        cached = []
-        status, body, _ = _http_json(
-            _RDAP_BOOTSTRAP_URLS[version],
-            {"Accept": "application/json", "User-Agent": _USER_AGENT},
-            timeout,
-        )
-        services = body.get("services") if status == 200 and body is not None else None
-        for service in services if isinstance(services, list) else []:
-            if not (isinstance(service, list) and len(service) >= 2):
-                continue
-            prefixes, urls = service[0], service[1]
-            base = next(
-                (item for item in urls if isinstance(item, str) and item.startswith("https://")),
-                None,
-            )
-            if not base:
-                continue
-            for prefix in prefixes if isinstance(prefixes, list) else []:
-                try:
-                    cached.append((ipaddress.ip_network(str(prefix)), base))
-                except ValueError:
-                    continue
-        with _bootstrap_lock:
-            _bootstrap_cache[version] = (time.monotonic(), cached)
+        # One fetch per version at a time: concurrent cold lookups wait rather than duplicate it.
+        with _bootstrap_fetch_locks[version]:
+            cached = _cached_bootstrap(version)
+            if cached is None:
+                cached = _fetch_bootstrap(version, timeout)
+                with _bootstrap_lock:
+                    _bootstrap_cache[version] = (time.monotonic(), cached)
     matches = [entry for entry in cached if address in entry[0]]
     if not matches:
         return None
@@ -408,7 +422,11 @@ def _ip_lookup(value: str, timeout: float) -> tuple[str, str, dict[str, Any]]:
     base = _rdap_service_base(address, timeout)
     source = "iana-bootstrap" if base else "arin-fallback"
     # A bootstrap fetch and the query itself share one timeout, so the pair stays inside it.
-    remaining = max(timeout - (time.monotonic() - started), _MIN_REQUEST_SECONDS)
+    remaining = timeout - (time.monotonic() - started)
+    if remaining <= 0:
+        # Starting the query now would run past the caller's bound; the caller decides how to
+        # record that, and under a budget it becomes a skipped lookup rather than a failure.
+        raise TimeoutError("The RDAP bootstrap fetch used the whole timeout for this lookup.")
     status, body, answered_by = _http_json(
         f"{(base or _RDAP_FALLBACK).rstrip('/')}/ip/{quote(value, safe='')}",
         {"Accept": "application/rdap+json", "User-Agent": _USER_AGENT},

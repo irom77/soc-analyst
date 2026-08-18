@@ -90,7 +90,10 @@ IP lookups resolve the responsible registry through the IANA RDAP bootstrap
 so a long-lived caller refreshes it instead of pinning one copy. If the bootstrap is
 unavailable, the lookup falls back to `rdap.arin.net` and relies on its redirects.
 `details.rdap_source` records which of the two was used, and `details.rdap_authority`
-records the host that actually answered.
+records the host that actually answered. Cold lookups for the same address family share
+one fetch rather than each making their own. The bootstrap fetch and the registry query
+share a single lookup timeout, and the query is not started at all if the fetch has
+already used it up.
 
 Cloudflare DNS and RDAP do not require API keys, while VirusTotal does. All are
 external services with availability, privacy, and rate-limit considerations. Observable values are disclosed

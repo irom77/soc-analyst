@@ -7,11 +7,11 @@ testing, and cleanup items first, then the behavior, extraction, and cleanup ite
 needed a UX decision. See "Completed" below. What remains is here: the three original
 items that predate the review, plus follow-ups the fixes opened up.
 
-A follow-up review on 2026-08-18 found four gaps in that work; all four are addressed in
+Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 "Completed (2026-08-18 follow-up)" below.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (63 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (65 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -28,6 +28,8 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 - [x] Make the enrichment budget a real wall-clock bound: it now caps each request's timeout as well as gating the start of a lookup, so a single lookup can no longer run for the full `--enrichment-timeout` past the deadline. A request the budget cuts short is recorded as `skipped` and is not counted against the provider (M-2 follow-up).
 - [x] State the circuit breaker's actual guarantee. The check is inherently check-then-act: lookups already dispatched are not cancelled, so a failing provider can receive up to `threshold + concurrency - 1` calls. `--help`, `README.md`, and a new concurrency test record that bound (M-2 follow-up).
 - [x] Give the RDAP bootstrap cache a one-hour TTL, and describe it as process-wide rather than per run, so a long-lived caller cannot pin a stale copy or a failed fetch indefinitely (L-4 follow-up).
+- [x] Make the bootstrap fetch single-flight per address family, so concurrent cold lookups wait for one fetch instead of each making their own and "fetched once" is true under concurrency (L-4 follow-up).
+- [x] Stop the RDAP query from starting when the bootstrap fetch has used the whole lookup timeout. The previous 0.1s floor let an IP lookup run past the budget; it now raises, which a budgeted run records as `skipped` (M-2 follow-up).
 - [x] Report a non-object JSON body from a `200` response as a provider `error`. It was previously coerced to an empty mapping, which read as `not_found` for DNS and as `found` for RDAP and VirusTotal (H-5 follow-up).
 
 ## Completed (2026-08-17 review, second pass)
