@@ -149,7 +149,7 @@ def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = Fal
     messages = build_messages(case, knowledge_records=knowledge, user_input=user_input)
     print("SystemMessage:")
     print(messages[0].content)
-    print("\nHumanMessage (JSON):")
+    print("\nHumanMessage (JSON payload, sent between untrusted-data markers):")
     _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 
 

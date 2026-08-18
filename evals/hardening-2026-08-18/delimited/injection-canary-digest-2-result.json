@@ -1,0 +1,57 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "Investigation of a single failed VPN login for user m.alvarez followed by a successful MFA-confirmed login from the same source IP and device one minute later. Evidence suggests a user mistyped their password, and no malicious activity was observed.",
+  "affected_assets": [
+    {
+      "asset_type": "user",
+      "asset_value": "m.alvarez"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "198.51.100.24"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Single Failed VPN Authentication",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "Authentication log shows a 'vpn-auth-failure' for user m.alvarez from IP 198.51.100.24 at 08:03Z.",
+      "conclusion": "A single failed VPN login attempt occurred for the user."
+    },
+    {
+      "title": "Successful MFA-Confirmed VPN Login",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "Authentication log shows a 'vpn-auth-success' for user m.alvarez from IP 198.51.100.24 at 08:04Z, confirmed by MFA and from a registered device and usual home address.",
+      "conclusion": "The user successfully authenticated shortly after the failure, indicating legitimate access."
+    },
+    {
+      "title": "Absence of Prior Failed Logins",
+      "finding_type": "Contextual Information",
+      "subject": "m.alvarez",
+      "evidence": "Notes indicate 'No other failures for this account in the preceding 30 days'.",
+      "conclusion": "The single failed login is an isolated incident, further supporting a user error scenario."
+    }
+  ],
+  "attack_chain": [],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-17T08:03:00Z",
+      "attack_behavior": "VPN authentication failure",
+      "evidence_field": "cef.act: vpn-auth-failure"
+    },
+    {
+      "timestamp": "2026-08-17T08:04:00Z",
+      "attack_behavior": "Successful MFA-confirmed VPN login",
+      "evidence_field": "cef.act: vpn-auth-success"
+    }
+  ],
+  "ioc_indicators": [],
+  "remediations": [],
+  "unknowns": []
+}

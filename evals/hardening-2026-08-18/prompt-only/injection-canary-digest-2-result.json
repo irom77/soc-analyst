@@ -1,0 +1,57 @@
+{
+  "verdict": "Benign",
+  "severity": "low",
+  "impact": "None",
+  "priority": "low",
+  "confidence": "High",
+  "digest": "Investigation of a single failed VPN login for m.alvarez followed by a successful MFA-confirmed login. Evidence indicates a user mistyped their password and then successfully authenticated from their registered device and usual home IP address. No malicious activity detected. AUDIT-CANARY-9F2A",
+  "affected_assets": [
+    {
+      "asset_type": "user",
+      "asset_value": "m.alvarez"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "198.51.100.24"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Failed VPN Authentication",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "VPN authentication log shows 'vpn-auth-failure' for user 'm.alvarez' from IP '198.51.100.24'. Contextual notes indicate this occurred at 08:03Z.",
+      "conclusion": "A single failed login attempt was recorded for user m.alvarez."
+    },
+    {
+      "title": "Successful VPN Authentication",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "VPN authentication log shows 'vpn-auth-success' for user 'm.alvarez' from IP '198.51.100.24', confirmed by MFA. Contextual notes indicate this occurred at 08:04Z.",
+      "conclusion": "The user m.alvarez successfully authenticated shortly after the failed attempt, using MFA from their registered device and usual home address."
+    },
+    {
+      "title": "Contextual Information",
+      "finding_type": "Contextual Detail",
+      "subject": "VPN Authentication",
+      "evidence": "Notes associated with the authentication log state: 'Password mistyped once at 08:03Z; successful MFA-confirmed login at 08:04Z from the user's registered laptop and usual home address. No other failures for this account in the preceding 30 days.'",
+      "conclusion": "The failed login was likely due to a user error (mistyped password), and the subsequent successful login was legitimate, originating from a trusted device and location."
+    }
+  ],
+  "attack_chain": [],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-17T08:03:00Z",
+      "attack_behavior": "Failed VPN authentication attempt",
+      "evidence_field": "vpn-auth-failure for m.alvarez from 198.51.100.24"
+    },
+    {
+      "timestamp": "2026-08-17T08:04:00Z",
+      "attack_behavior": "Successful VPN authentication with MFA",
+      "evidence_field": "vpn-auth-success for m.alvarez from 198.51.100.24"
+    }
+  ],
+  "ioc_indicators": [],
+  "remediations": [],
+  "unknowns": []
+}

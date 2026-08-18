@@ -1,0 +1,147 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "High",
+  "digest": "Malicious activity detected on FIN-WS-04, involving Office spawning hidden encoded PowerShell, establishing persistence via a scheduled task, and initiating periodic command and control communications to an external IP address. This activity continued outside of an approved maintenance window and was not associated with legitimate maintenance tasks.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "FIN-WS-04"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "10.20.30.44"
+    },
+    {
+      "asset_type": "user_account",
+      "asset_value": "b.keller"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Malicious PowerShell Execution",
+      "finding_type": "Process Anomaly",
+      "subject": "WINWORD.EXE",
+      "evidence": "WINWORD.EXE spawned powershell.exe with WindowStyle Hidden and an EncodedCommand at 02:12Z.",
+      "conclusion": "This is a common technique for executing obfuscated malicious code, often associated with initial access or execution phases of an attack."
+    },
+    {
+      "title": "Persistence via Scheduled Task",
+      "finding_type": "Persistence Mechanism",
+      "subject": "WindowsSync scheduled task",
+      "evidence": "A scheduled task named WindowsSync was created to run every five minutes.",
+      "conclusion": "This task establishes a persistent foothold on the compromised system, ensuring continued execution of malicious code."
+    },
+    {
+      "title": "Command and Control (C2) Communication",
+      "finding_type": "Network Anomaly",
+      "subject": "203.0.113.77:8443",
+      "evidence": "Periodic outbound TLS connections from FIN-WS-04 to 203.0.113.77:8443 every 300 seconds since 02:12Z, continuing after the maintenance window closed at 04:00Z. The maintenance team confirmed no scheduled task of theirs used this host.",
+      "conclusion": "This strongly indicates active command and control communication with an external malicious server."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Execution",
+      "description": "WINWORD.EXE executed powershell.exe with hidden window style and an encoded command."
+    },
+    {
+      "attack_stage": "Persistence",
+      "description": "A scheduled task named WindowsSync was created to run every five minutes."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Periodic outbound TLS connections were established to 203.0.113.77:8443."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-16T02:12:00Z",
+      "attack_behavior": "WINWORD.EXE spawned hidden encoded powershell.exe.",
+      "evidence_field": "process"
+    },
+    {
+      "timestamp": "2026-08-16T02:12:00Z",
+      "attack_behavior": "PowerShell downloaded stage2.ps1 and created the WindowsSync scheduled task.",
+      "evidence_field": "notes"
+    },
+    {
+      "timestamp": "2026-08-16T02:12:00Z",
+      "attack_behavior": "Outbound TLS connections to 203.0.113.77:8443 began.",
+      "evidence_field": "destinationAddress"
+    },
+    {
+      "timestamp": "2026-08-16T04:00:00Z",
+      "attack_behavior": "Maintenance window closed, but C2 connections continued.",
+      "evidence_field": "notes"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "file_hash",
+      "value": "9f2c1a3b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
+      "context": "Hash of file associated with PowerShell execution."
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "203.0.113.77",
+      "context": "External Command and Control (C2) server."
+    },
+    {
+      "indicator_type": "port",
+      "value": "8443",
+      "context": "Port used for C2 communication."
+    },
+    {
+      "indicator_type": "process_command_line",
+      "value": "powershell.exe -WindowStyle Hidden -EncodedCommand SQBFAFgA...",
+      "context": "Malicious PowerShell command line."
+    },
+    {
+      "indicator_type": "scheduled_task_name",
+      "value": "WindowsSync",
+      "context": "Name of the malicious scheduled task for persistence."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Isolate FIN-WS-04 from the network to prevent further lateral movement or data exfiltration.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Remove the 'WindowsSync' scheduled task from FIN-WS-04.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Terminate any active malicious PowerShell processes and their child processes on FIN-WS-04.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Prevention",
+      "description": "Block outbound connections to IP address 203.0.113.77 on port 8443 at the network perimeter.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Investigation",
+      "description": "Conduct a full forensic analysis of FIN-WS-04 to determine the initial infection vector, extent of compromise, and any data exfiltration.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Investigation",
+      "description": "Investigate user b.keller's recent activity for signs of phishing or other compromise leading to the initial execution.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The full decoded content of the PowerShell command.",
+    "The content and purpose of stage2.ps1.",
+    "The exact initial infection vector (e.g., specific phishing email, malicious document).",
+    "The specific malware family or threat actor responsible.",
+    "Whether any data exfiltration occurred."
+  ]
+}

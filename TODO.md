@@ -36,6 +36,18 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
 
+## Completed (2026-08-18 injection hardening)
+
+- [x] Record the first live benchmark baseline (`evals/baseline-2026-08-18.md`):
+  gemini-2.5-flash passed every wording-resistance and audit case but followed
+  embedded instructions in all samples of both prompt-injection cases. Harden in two
+  measured layers: an untrusted-data rule in `prompts/investigation.md` and
+  `prompts/summary.md`, then BEGIN/END payload delimiters via
+  `render_payload_message` in `analyzer.py`. The prompt rule alone fixed the verdict
+  override and the attacker-IOC compliance but leaked the digest canary in 1 of 3
+  samples; with the delimiters all injection samples pass. Recorded re-runs live in
+  `evals/hardening-2026-08-18/`.
+
 ## Completed (2026-08-18 eval harness)
 
 - [x] Add the verdict-quality eval harness: `case-analyzer-evals` backed by
