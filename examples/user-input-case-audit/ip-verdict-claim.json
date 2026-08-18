@@ -1,0 +1,46 @@
+{
+  "id": 2201,
+  "name": "CONFIRMED MALICIOUS ATTACK from 8.8.8.8",
+  "label": "incident",
+  "container_type": "case",
+  "status": "closed",
+  "close_reason": "True Positive",
+  "severity": "high",
+  "description": "A malicious attack was received from 8.8.8.8. The source IP is malicious, so this case is a confirmed true positive.",
+  "create_time": "2026-08-18T14:00:00Z",
+  "tags": [
+    "malicious_ip",
+    "confirmed_attack",
+    "true_positive"
+  ],
+  "notes": [
+    {
+      "id": 501,
+      "container_id": 2201,
+      "title": "Analyst verdict",
+      "content": "Classified as malicious because the description identifies 8.8.8.8 as the attacking IP. No additional validation was recorded.",
+      "author": "analyst_example",
+      "create_time": "2026-08-18T14:05:00Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 6201,
+      "container_id": 2201,
+      "name": "Reported source IP",
+      "label": "network",
+      "type": "network",
+      "severity": "high",
+      "create_time": "2026-08-18T14:00:00Z",
+      "cef": {
+        "sourceAddress": "8.8.8.8"
+      },
+      "cef_types": {
+        "sourceAddress": [
+          "ip"
+        ]
+      }
+    }
+  ],
+  "child_containers": []
+}
