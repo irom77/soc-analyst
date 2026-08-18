@@ -42,6 +42,8 @@ The script invokes the LLM once per case, writes full structured reports to a te
 ./test.sh ./reasoning-results
 ```
 
+Every run starts with the offline unit tests and Ruff checks. To run those checks without invoking the LLM, use `./test.sh --offline`.
+
 The script reports `PASS` when the verdict is in the allowed set. It reports `REVIEW` and exits nonzero when a result falls outside that set. `REVIEW` calls for human inspection; it does not automatically mean the model is wrong.
 
 Running the script sends all three synthetic cases to the configured provider and may incur provider charges.

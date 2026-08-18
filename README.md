@@ -215,7 +215,13 @@ After configuring the provider variables above, run the automated comparison fro
 ./test.sh
 ```
 
-The script sends three synthetic nested SOAR cases to the configured LLM: alarming wording with benign evidence, reassuring wording with malicious evidence, and alarming wording with insufficient evidence. It prints a Markdown table comparing each actual verdict with an allowed expected set. A result outside its expected set is marked `REVIEW` and makes the script exit nonzero so that a person can inspect the model's reasoning.
+The script first runs all offline unit tests and Ruff checks, then sends three synthetic nested SOAR cases to the configured LLM: alarming wording with benign evidence, reassuring wording with malicious evidence, and alarming wording with insufficient evidence. It prints a Markdown table comparing each actual verdict with an allowed expected set. A result outside its expected set is marked `REVIEW` and makes the script exit nonzero so that a person can inspect the model's reasoning.
+
+To run only the offline unit tests and Ruff checks without credentials, network access, or provider charges:
+
+```bash
+./test.sh --offline
+```
 
 By default, full structured reports are written to a temporary directory whose path is printed after the table. Pass a directory to retain them at a chosen location:
 

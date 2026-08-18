@@ -3,7 +3,47 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 manifest="$script_dir/examples/reasoning/expectations.json"
-results_dir="${1:-$(mktemp -d)}"
+offline=false
+results_dir=""
+
+usage() {
+    echo "Usage: $0 [--offline] [results-directory]"
+}
+
+while (($#)); do
+    case "$1" in
+        --offline)
+            offline=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+        *)
+            if [[ -n "$results_dir" ]]; then
+                echo "Only one results directory may be specified." >&2
+                usage >&2
+                exit 2
+            fi
+            results_dir="$1"
+            ;;
+    esac
+    shift
+done
+
+uv run --project "$script_dir" python -m unittest discover -s "$script_dir/tests" -t "$script_dir"
+uv run --project "$script_dir" ruff check "$script_dir/src" "$script_dir/tests"
+
+if [[ "$offline" == true ]]; then
+    exit 0
+fi
+
+results_dir="${results_dir:-$(mktemp -d)}"
 mkdir -p "$results_dir"
 
 mapfile -t cases < <(uv run --project "$script_dir" python - "$manifest" <<'PY'

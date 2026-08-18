@@ -60,6 +60,29 @@ class AnalyzeCaseTests(unittest.TestCase):
 
         self.assertIn("CASE_ANALYZER_API_KEY", str(raised.exception))
 
+    def test_case_analyzer_model_configures_the_openai_compatible_client(self):
+        environment = {
+            "CASE_ANALYZER_MODEL": "openai-compatible-model",
+            "CASE_ANALYZER_BASE_URL": "https://llm.example.test/v1",
+            "CASE_ANALYZER_API_KEY": "test-key",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            with patch("case_analyzer.analyzer.ChatOpenAI") as chat:
+                chat.return_value.with_structured_output.return_value.invoke.return_value = (
+                    InvestigationReport(
+                        verdict="Benign",
+                        severity="low",
+                        impact="none",
+                        priority="low",
+                        confidence="low",
+                        digest="d",
+                    )
+                )
+                analyze_case(_case())
+
+        self.assertEqual("openai-compatible-model", chat.call_args.kwargs["model"])
+        self.assertEqual("https://llm.example.test/v1", chat.call_args.kwargs["base_url"])
+
     def test_request_timeout_is_forwarded_to_the_client(self):
         with patch.dict(os.environ, _ENVIRONMENT, clear=True):
             with patch("case_analyzer.analyzer.ChatOpenAI") as chat:
