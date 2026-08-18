@@ -11,9 +11,11 @@ from case_analyzer.analyzer import (
     analyze_case,
     build_analysis_messages,
     build_analysis_payload,
+    build_summary_messages,
+    summarize_case,
 )
 from case_analyzer.enrichment import enrich_case
-from case_analyzer.schemas import InvestigationReport
+from case_analyzer.schemas import CaseSummary, InvestigationReport
 
 _ENVIRONMENT = {"CASE_ANALYZER_MODEL": "test-model", "CASE_ANALYZER_API_KEY": "test-key"}
 
@@ -38,6 +40,52 @@ class PayloadTests(unittest.TestCase):
 
         self.assertIn("case_analyzer_enrichment", messages[0].content)
         self.assertEqual("Example", json.loads(messages[1].content)["case"]["title"])
+
+
+    def test_summary_messages_reuse_the_payload_under_a_different_system_prompt(self):
+        analysis, summary = build_analysis_messages(_case()), build_summary_messages(_case())
+
+        self.assertNotEqual(analysis[0].content, summary[0].content)
+        self.assertIn("CaseSummary", summary[0].content)
+        self.assertNotIn("InvestigationReport", summary[0].content)
+        self.assertEqual(analysis[1].content, summary[1].content)
+
+
+class SummarizeCaseTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("case_analyzer.analyzer.load_dotenv")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_summary_is_requested_against_the_case_summary_schema(self):
+        with patch.dict(os.environ, _ENVIRONMENT, clear=True):
+            with patch("case_analyzer.analyzer.ChatOpenAI") as chat:
+                structured = chat.return_value.with_structured_output
+                structured.return_value.invoke.return_value = CaseSummary(summary="A short digest.")
+                result = summarize_case(_case())
+
+        self.assertEqual("A short digest.", result.summary)
+        self.assertEqual(CaseSummary, structured.call_args.args[0])
+        sent = structured.return_value.invoke.call_args.args[0]
+        self.assertIn("CaseSummary", sent[0].content)
+
+    def test_schema_mismatch_names_the_summary_schema(self):
+        try:
+            CaseSummary.model_validate({"secret": "leaked value"})
+        except ValidationError as exc:
+            mismatch = exc
+
+        with patch.dict(os.environ, _ENVIRONMENT, clear=True):
+            with patch("case_analyzer.analyzer.ChatOpenAI") as chat:
+                structured = MagicMock()
+                structured.invoke.side_effect = mismatch
+                chat.return_value.with_structured_output.return_value = structured
+                with self.assertRaises(LLMProviderError) as raised:
+                    summarize_case(_case())
+
+        self.assertEqual(6, raised.exception.exit_code)
+        self.assertIn("CaseSummary schema", str(raised.exception))
+        self.assertNotIn("leaked value", str(raised.exception))
 
 
 class AnalyzeCaseTests(unittest.TestCase):

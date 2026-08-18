@@ -42,7 +42,8 @@ soc-analyst/
     ├── schemas.py
     └── prompts/
         ├── __init__.py
-        └── investigation.md
+        ├── investigation.md
+        └── summary.md
 ```
 
 The modules have separate responsibilities:
@@ -54,6 +55,7 @@ The modules have separate responsibilities:
 | `schemas.py` | Define and validate input and output structures | Pydantic field requirements |
 | `analyzer.py` | Build messages, configure the model, invoke it, and return a report | LangChain and OpenAI-compatible providers |
 | `prompts/investigation.md` | Tell the model how to reason about evidence | SOC investigation rules |
+| `prompts/summary.md` | Tell the model to describe the case without judging it, for `--summary` | What belongs in a case digest |
 
 ## End-to-end execution
 
@@ -177,6 +179,8 @@ The canonical structure prevents prompt-building logic from depending on source-
 2. `HumanMessage` contains the payload serialized as JSON.
 
 The prompt is loaded with `importlib.resources`, so it continues to work after the package is installed as a wheel. It instructs the model to use evidence only, separate facts from inference, deduplicate alerts, list uncertainties, and avoid inventing content merely to fill the schema.
+
+`--summary` takes the same path with one substitution: `build_summary_messages()` pairs the identical payload with `summary.md`, and `summarize_case()` requests the `CaseSummary` schema instead of `InvestigationReport`. Both entry points share `_request_structured()`, which resolves the model and key, invokes the provider, and maps failures to `LLMProviderError`, so the two modes cannot drift apart in configuration or error handling.
 
 #### Message construction and analyst guidance
 

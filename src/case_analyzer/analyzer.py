@@ -14,9 +14,9 @@ from openai import (
     OpenAIError,
     RateLimitError,
 )
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from .schemas import CanonicalCase, InvestigationReport
+from .schemas import CanonicalCase, CaseSummary, InvestigationReport
 
 
 class LLMProviderError(RuntimeError):
@@ -27,8 +27,16 @@ class LLMProviderError(RuntimeError):
         self.exit_code = exit_code
 
 
+def _prompt(name: str) -> str:
+    return files("case_analyzer.prompts").joinpath(name).read_text(encoding="utf-8")
+
+
 def _system_prompt() -> str:
-    return files("case_analyzer.prompts").joinpath("investigation.md").read_text(encoding="utf-8")
+    return _prompt("investigation.md")
+
+
+def _summary_prompt() -> str:
+    return _prompt("summary.md")
 
 
 def build_analysis_payload(
@@ -61,6 +69,20 @@ def build_analysis_messages(
     ]
 
 
+def build_summary_messages(
+    case: CanonicalCase,
+    *,
+    knowledge_records: list[dict[str, Any]] | None = None,
+    user_input: str = "",
+) -> list:
+    """Same case payload as the analysis request, asked for as a narrative summary."""
+    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
+    return [
+        SystemMessage(content=_summary_prompt()),
+        HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+    ]
+
+
 def _validation_summary(exc: ValidationError, limit: int = 3) -> str:
     """Describe a schema mismatch without echoing the raw model output."""
     parts = [
@@ -70,16 +92,15 @@ def _validation_summary(exc: ValidationError, limit: int = 3) -> str:
     return "; ".join(parts) or "no field detail available"
 
 
-def analyze_case(
-    case: CanonicalCase,
+def _request_structured(
+    schema: type[BaseModel],
+    messages: list,
     *,
-    knowledge_records: list[dict[str, Any]] | None = None,
-    user_input: str = "",
-    model: str | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
-    timeout: float | None = None,
-) -> InvestigationReport:
+    model: str | None,
+    base_url: str | None,
+    api_key: str | None,
+    timeout: float | None,
+):
     # Make the standalone CLI usable without manually exporting provider
     # variables. Existing environment variables retain precedence over .env.
     load_dotenv()
@@ -98,14 +119,11 @@ def analyze_case(
             max_retries=0,
             timeout=timeout,
         )
-        structured_llm = llm.with_structured_output(InvestigationReport)
-        return structured_llm.invoke(
-            build_analysis_messages(case, knowledge_records=knowledge_records, user_input=user_input)
-        )
+        structured_llm = llm.with_structured_output(schema)
+        return structured_llm.invoke(messages)
     except ValidationError as exc:
         raise LLMProviderError(
-            "The model response did not match the InvestigationReport schema: "
-            f"{_validation_summary(exc)}.",
+            f"The model response did not match the {schema.__name__} schema: {_validation_summary(exc)}.",
             6,
         ) from exc
     except AuthenticationError as exc:
@@ -122,3 +140,43 @@ def analyze_case(
         raise LLMProviderError(f"LLM provider returned HTTP {exc.status_code}.", 6) from exc
     except OpenAIError as exc:
         raise LLMProviderError(f"LLM request failed ({type(exc).__name__}).", 6) from exc
+
+
+def analyze_case(
+    case: CanonicalCase,
+    *,
+    knowledge_records: list[dict[str, Any]] | None = None,
+    user_input: str = "",
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+) -> InvestigationReport:
+    return _request_structured(
+        InvestigationReport,
+        build_analysis_messages(case, knowledge_records=knowledge_records, user_input=user_input),
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        timeout=timeout,
+    )
+
+
+def summarize_case(
+    case: CanonicalCase,
+    *,
+    knowledge_records: list[dict[str, Any]] | None = None,
+    user_input: str = "",
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+) -> CaseSummary:
+    return _request_structured(
+        CaseSummary,
+        build_summary_messages(case, knowledge_records=knowledge_records, user_input=user_input),
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        timeout=timeout,
+    )

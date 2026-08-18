@@ -6,7 +6,7 @@ For a detailed explanation of the package architecture and execution flow, see t
 
 For common questions about evidence handling and generated conclusions, see the [Case Analyzer FAQ](FAQ.md).
 
-For a complete nested-container example and recorded live LLM output, see the [Splunk SOAR case analysis result](examples/splunk-soar-analysis.md). The [full explanation transcript](examples/splunk-soar-explain-case-analysis.txt) records the earlier compatibility command's walkthrough for the same export.
+For a complete nested-container example and recorded live LLM output, see the [Splunk SOAR case analysis result](examples/splunk-soar-analysis.md). The [Splunk SOAR case summary result](examples/splunk-soar-summary.md) records what `--summary` returns for the same export, with each claim traced back to the evidence it came from. The [full explanation transcript](examples/splunk-soar-explain-case-analysis.txt) records the earlier compatibility command's walkthrough for the same export.
 
 For contrasting cases that exercise evidence-oriented reasoning rather than keyword matching, see the [reasoning examples and recorded comparison](examples/reasoning/README.md).
 
@@ -109,13 +109,43 @@ the command used to regenerate it.
 
 LLM failures stop the analysis without writing a report. Authentication failures,
 rate or quota limits, timeouts, connection failures, provider HTTP errors, and model
-responses that do not match the `InvestigationReport` schema are reported as concise
+responses that do not match the requested schema are reported as concise
 `case-analyzer: LLM error:` messages without printing credentials, request payloads, or
 raw model output. A missing model or API key is reported before any request is sent.
 Automatic LLM retries are disabled to avoid unplanned cost and additional rate-limit
 pressure; `--llm-timeout` (default `120` seconds) bounds a single request. Exit codes
 are `2` for input/configuration errors, `3` for authentication, `4` for rate/quota
 limits, `5` for timeout/connection failures, and `6` for other provider errors.
+
+### Summarize the input case
+
+Add `--summary` to have the model describe what the case contains and stop, instead of
+investigating it:
+
+```bash
+uv run case-analyzer examples/splunk-soar.json --format soar --summary
+```
+
+The run prints `{"summary": "..."}` rather than an `InvestigationReport`, and no verdict,
+severity, attack chain, IOC list, or remediation is produced. The system prompt asks for
+one to three paragraphs covering what was reported and by which source, when it started
+and last changed, the assets and observables involved, and what analysts already recorded
+in comments or the timeline; the model is told to describe the evidence rather than draw
+conclusions from it.
+
+`--summary` composes with the other flags. It sends the same case payload as an analysis
+run, so it costs one LLM request and honours `--knowledge`, `--user-input`, `--model`,
+`--llm-timeout`, and `--output`. Running it after `--enrich` includes the enrichment
+block, which the prompt requires be attributed to its provider. Combined with `--dry-run`
+no request is sent; add `--explain` to that combination to see the summary system prompt:
+
+```bash
+uv run case-analyzer examples/splunk-soar.json --format soar --summary --dry-run --explain
+```
+
+See [`examples/splunk-soar-summary.md`](examples/splunk-soar-summary.md) for a recorded
+live run against the nested Splunk SOAR export, including a table tracing every claim in
+the generated summary back to the field, note, or comment it came from.
 
 Add `--explain` to print normalization plus the exact system and human messages before
 the result:

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from case_analyzer import cli, explain_cli
 from case_analyzer.analyzer import LLMProviderError
+from case_analyzer.schemas import CaseSummary
 
 
 class ExplainCliTests(unittest.TestCase):
@@ -65,6 +66,29 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("", output.getvalue())
         self.assertEqual("Example", json.loads(target.read_text(encoding="utf-8"))["case"]["title"])
+
+    @patch("case_analyzer.cli.analyze_case")
+    @patch("case_analyzer.cli.summarize_case")
+    def test_summary_returns_a_digest_and_never_requests_a_report(self, summarize_case, analyze_case):
+        summarize_case.return_value = CaseSummary(summary="One paragraph about the case.")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = cli.main([str(self.case_path), "--summary"])
+
+        self.assertEqual(0, status)
+        analyze_case.assert_not_called()
+        self.assertEqual({"summary": "One paragraph about the case."}, json.loads(output.getvalue()))
+
+    @patch("case_analyzer.cli.summarize_case")
+    def test_summary_dry_run_previews_the_summary_prompt_without_calling_the_llm(self, summarize_case):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = cli.main([str(self.case_path), "--summary", "--dry-run", "--explain"])
+
+        self.assertEqual(0, status)
+        summarize_case.assert_not_called()
+        self.assertIn("structured case-summary request", output.getvalue())
+        self.assertIn("Remove --dry-run to request a case summary.", output.getvalue())
 
     def test_malformed_knowledge_file_is_rejected_before_enrichment_runs(self):
         knowledge_path = Path(self.directory.name) / "knowledge.json"

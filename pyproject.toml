@@ -32,3 +32,4 @@ packages = ["src/case_analyzer"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/case_analyzer/prompts/investigation.md" = "case_analyzer/prompts/investigation.md"
+"src/case_analyzer/prompts/summary.md" = "case_analyzer/prompts/summary.md"

@@ -11,13 +11,14 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 "Completed (2026-08-18 follow-up)" below.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (65 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (75 offline tests; no credentials or network needed).
 
 ## Existing
 
 - [ ] Address payload quality, duplicated `source_data`, provider cost and rate limits, and excessive noisy enrichment. Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7); VirusTotal has no throttle against its ~4 request/minute public tier (L-5). L-5 is not theoretical: two live runs of the single-observable enrichment example minutes apart returned `HTTP 429` on the second, so a 25-observable run on the public tier will mostly record quota errors. Caching plus a request interval would fix both runs.
 - [ ] Evaluate additional free enrichment providers in this order: ThreatFox for domain/IP IOC matches, GreyNoise Community for internet-scanner context, and URLhaus after complete URL extraction is supported. Keep provider results separately attributed, cache responses, respect enrichment limits, and treat `not_found` as inconclusive. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
 - [x] Add optional AbuseIPDB public-IP reputation through the v2 `check` endpoint. It uses a 30-day report window, runs only when `ABUSEIPDB_API_KEY` is configured, and keeps the result separately attributed. The Standard tier currently permits 1,000 `check` requests per day; higher account tiers have higher limits. Operators remain responsible for confirming that their account and use comply with the provider's current terms.
+- [x] Add `--summary`, which asks the model to describe the input case in prose and stops, printing `{"summary": ...}` instead of an `InvestigationReport`. It reuses the analysis payload under a separate `prompts/summary.md` system prompt that forbids a verdict, severity, attack chain, or remediation, and returns the `CaseSummary` schema. `analyze_case` and `summarize_case` now share one provider call and its sanitized error mapping. With `--dry-run` no request is sent; `--explain` shows the summary prompt.
 - [ ] Remove the deprecated `explain_case_analysis` and `explain-case-analysis` aliases in the next breaking release; use `case-analyzer --explain` instead. The `--help` text already states that the alias forwards neither `--output` nor `--enrich` (L-9).
 
 ## Extraction coverage

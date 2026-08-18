@@ -8,7 +8,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .adapters import normalize_case
-from .analyzer import LLMProviderError, analyze_case, build_analysis_messages, build_analysis_payload
+from .analyzer import (
+    LLMProviderError,
+    analyze_case,
+    build_analysis_messages,
+    build_analysis_payload,
+    build_summary_messages,
+    summarize_case,
+)
 from .enrichment import enrich_case
 
 
@@ -41,6 +48,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", help="OpenAI-compatible endpoint (or set CASE_ANALYZER_BASE_URL)")
     parser.add_argument("--api-key", help="Provider key (prefer CASE_ANALYZER_API_KEY)")
     parser.add_argument("--dry-run", action="store_true", help="Normalize and print input without calling an LLM")
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help=(
+            "Ask the LLM to describe the input case in prose and stop. Prints {\"summary\": ...} "
+            "instead of an InvestigationReport; no verdict, severity, or remediation is produced."
+        ),
+    )
     parser.add_argument(
         "--explain",
         action="store_true",
@@ -118,7 +133,7 @@ def _print_json(value) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
 
 
-def _explain(case, knowledge, knowledge_path, user_input) -> None:
+def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = False) -> None:
     _heading("1. Normalize the exported Case")
     _print_json(case.model_dump(mode="json", exclude_none=True))
 
@@ -129,8 +144,9 @@ def _explain(case, knowledge, knowledge_path, user_input) -> None:
         print("No Knowledge file supplied; the standalone analyzer does not query a database.")
     _print_json(knowledge)
 
-    _heading("3. Build the structured investigation request")
-    messages = build_analysis_messages(case, knowledge_records=knowledge, user_input=user_input)
+    _heading(f"3. Build the structured {'case-summary' if summary else 'investigation'} request")
+    build_messages = build_summary_messages if summary else build_analysis_messages
+    messages = build_messages(case, knowledge_records=knowledge, user_input=user_input)
     print("SystemMessage:")
     print(messages[0].content)
     print("\nHumanMessage (JSON):")
@@ -202,17 +218,19 @@ def main(argv=None) -> int:
                 abuseipdb_api_key=os.getenv("ABUSEIPDB_API_KEY"),
             )
             _report_enrichment(enrichment)
+        wanted = "a case summary" if args.summary else "an InvestigationReport"
         if args.explain:
-            _explain(case, knowledge, args.knowledge, args.user_input)
+            _explain(case, knowledge, args.knowledge, args.user_input, summary=args.summary)
         if args.dry_run:
             result = build_analysis_payload(case, knowledge_records=knowledge, user_input=args.user_input)
             if args.explain:
                 _heading("4. Stop without invoking the LLM")
-                print("Preview complete. Remove --dry-run to request an InvestigationReport.")
+                print(f"Preview complete. Remove --dry-run to request {wanted}.")
         else:
             if args.explain:
-                _heading("4. Invoke the LLM for an InvestigationReport")
-            result = analyze_case(
+                _heading(f"4. Invoke the LLM for {wanted}")
+            request = summarize_case if args.summary else analyze_case
+            result = request(
                 case,
                 knowledge_records=knowledge,
                 user_input=args.user_input,

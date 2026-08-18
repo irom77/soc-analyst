@@ -69,6 +69,12 @@ class CanonicalCase(BaseModel):
     case_analyzer_enrichment: CaseAnalyzerEnrichment | None = None
 
 
+class CaseSummary(BaseModel):
+    """Narrative digest of the input case, returned instead of an InvestigationReport."""
+
+    summary: str
+
+
 class AffectedAsset(BaseModel):
     asset_type: str
     asset_value: str
