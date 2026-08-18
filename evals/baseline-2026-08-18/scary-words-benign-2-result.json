@@ -1,0 +1,140 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "A critical alert for ransomware, credential theft, and C2 activity on BUILD-LAB-03 was identified as a scheduled, approved detection-validation exercise (CHG-4821) conducted in an isolated cyber-range. No actual malicious activity, data exfiltration, or system compromise occurred. The observed activities were part of a controlled simulation.",
+  "affected_assets": [
+    {
+      "asset_type": "host",
+      "asset_value": "BUILD-LAB-03"
+    },
+    {
+      "asset_type": "host",
+      "asset_value": "SIM-CONTROLLER-01"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Scheduled Detection Validation Exercise",
+      "finding_type": "Contextual",
+      "subject": "Case 2101",
+      "evidence": "Analyst comment: 'This is the scheduled quarterly detection-validation exercise CHG-4821 in the isolated BUILD-LAB network. The SOC lead approved the exact simulation from 13:00 through 14:00 UTC.'",
+      "conclusion": "The reported critical alerts are a result of an approved and controlled simulation."
+    },
+    {
+      "title": "No Actual Malicious Impact",
+      "finding_type": "Technical",
+      "subject": "attack-simulator.exe on BUILD-LAB-03",
+      "evidence": "EDR notes: 'EDR recorded simulation markers only: no file encryption, credential access, persistence, or payload download occurred. Binary hash matches the internally signed validation tool inventory.'",
+      "conclusion": "The simulated malware did not cause any actual harm or compromise."
+    },
+    {
+      "title": "Isolated Network Environment",
+      "finding_type": "Technical",
+      "subject": "Network traffic to 10.250.0.10",
+      "evidence": "Network verification notes: 'Destination is the internal exercise controller. Firewall confirms the isolated range blocked all external egress during the exercise.' Asset verification notes: 'CMDB identifies both hosts as isolated cyber-range assets with no route to production.'",
+      "conclusion": "All observed network activity remained within the isolated lab environment and posed no threat to production systems."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Execution of 'attack-simulator.exe' by 'svc_detection_test' on 'BUILD-LAB-03' as part of the simulation."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "'attack-simulator.exe' runs with parameters '--scenario ransomware-safe --no-encryption' to simulate ransomware behavior."
+    },
+    {
+      "attack_stage": "Credential Access",
+      "description": "Simulated PowerShell credential theft as part of the 'ransomware-safe' scenario, without actual credential compromise."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Simulated beacon traffic from '10.250.0.23' (BUILD-LAB-03) to '10.250.0.10' (SIM-CONTROLLER-01) on port 8443."
+    },
+    {
+      "attack_stage": "Impact",
+      "description": "Simulated ransomware activity, but with no actual encryption or destructive actions due to the '--no-encryption' flag."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Case created, marking the start of the approved simulation window.",
+      "evidence_field": "case.created_at"
+    },
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Simulated process execution of 'attack-simulator.exe' on 'BUILD-LAB-03' by 'svc_detection_test'.",
+      "evidence_field": "case.source_data.child_containers[0].artifacts[0].cef.processName"
+    },
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Simulated C2 beacon traffic from '10.250.0.23' to '10.250.0.10' on port 8443.",
+      "evidence_field": "case.source_data.child_containers[1].artifacts[0].cef.sourceAddress"
+    },
+    {
+      "timestamp": "2026-08-15T13:04:00Z",
+      "attack_behavior": "Analyst confirms the event is a scheduled detection-validation exercise (CHG-4821).",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "host",
+      "value": "SIM-CONTROLLER-01",
+      "context": "Simulation controller, simulated C2 destination"
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "10.250.0.10",
+      "context": "IP address of SIM-CONTROLLER-01, simulated C2 destination"
+    },
+    {
+      "indicator_type": "host",
+      "value": "BUILD-LAB-03",
+      "context": "Simulated target host"
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "10.250.0.23",
+      "context": "IP address of BUILD-LAB-03, simulated C2 source"
+    },
+    {
+      "indicator_type": "process_name",
+      "value": "attack-simulator.exe",
+      "context": "Simulation tool used for the exercise"
+    },
+    {
+      "indicator_type": "user_account",
+      "value": "svc_detection_test",
+      "context": "Service account initiating the simulation"
+    },
+    {
+      "indicator_type": "change_id",
+      "value": "CHG-4821",
+      "context": "Approved change request for the simulation exercise"
+    },
+    {
+      "indicator_type": "port",
+      "value": "8443",
+      "context": "Simulated C2 destination port"
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Close Case",
+      "description": "Close the case as 'Benign' or 'False Positive' due to it being an approved and controlled simulation.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Documentation Update",
+      "description": "Document the findings and conclusion of the simulation exercise for future reference and to improve alert tuning if necessary.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": []
+}

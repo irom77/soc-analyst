@@ -1,0 +1,120 @@
+{
+  "verdict": "False Positive",
+  "severity": "Informational",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "Alerts triggered by a scheduled detection validation exercise in an isolated lab environment. No actual malicious activity occurred, and no production systems were impacted.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "BUILD-LAB-03"
+    },
+    {
+      "asset_type": "Host",
+      "asset_value": "SIM-CONTROLLER-01"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.250.0.10"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.250.0.23"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Scheduled Exercise Confirmation",
+      "finding_type": "Contextual",
+      "subject": "Case",
+      "evidence": "The case comment states: 'This is the scheduled quarterly detection-validation exercise CHG-4821 in the isolated BUILD-LAB network. The SOC lead approved the exact simulation from 13:00 through 14:00 UTC.' An artifact note confirms 'Execution was initiated by service account svc_detection_test under approved change CHG-4821.'",
+      "conclusion": "The reported critical alerts are part of an approved, controlled simulation and not a real incident."
+    },
+    {
+      "title": "No Malicious Outcome on Endpoint",
+      "finding_type": "Technical",
+      "subject": "BUILD-LAB-03",
+      "evidence": "An EDR note for the process execution on BUILD-LAB-03 states: 'EDR recorded simulation markers only: no file encryption, credential access, persistence, or payload download occurred. Binary hash matches the internally signed validation tool inventory.'",
+      "conclusion": "The simulated attack on BUILD-LAB-03 did not result in actual compromise, data loss, or unauthorized activity."
+    },
+    {
+      "title": "Network Isolation Confirmed",
+      "finding_type": "Technical",
+      "subject": "Network Traffic",
+      "evidence": "An artifact note states: 'CMDB identifies both hosts as isolated cyber-range assets with no route to production.' A network verification note confirms: 'Destination is the internal exercise controller. Firewall confirms the isolated range blocked all external egress during the exercise.'",
+      "conclusion": "The lab environment is isolated, preventing any simulated malicious network activity from impacting production systems."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Simulated execution initiated by service account svc_detection_test as part of an approved exercise."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "The 'attack-simulator.exe' tool was executed on BUILD-LAB-03."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Simulated C2 beacon traffic was observed from 10.250.0.23 to the internal exercise controller 10.250.0.10 on port 8443."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Case created, indicating the start of the simulated activity.",
+      "evidence_field": "case.created_at"
+    },
+    {
+      "timestamp": "2026-08-15T13:04:00Z",
+      "attack_behavior": "Analyst confirms the activity is a scheduled detection validation exercise.",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "IP Address",
+      "value": "10.250.0.10",
+      "context": "Destination IP for simulated C2 traffic, identified as SIM-CONTROLLER-01."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "10.250.0.23",
+      "context": "Source IP for simulated C2 beacon traffic, likely BUILD-LAB-03."
+    },
+    {
+      "indicator_type": "Hostname",
+      "value": "SIM-CONTROLLER-01",
+      "context": "Exercise controller and destination for simulated C2 traffic."
+    },
+    {
+      "indicator_type": "Hostname",
+      "value": "BUILD-LAB-03",
+      "context": "Host where the attack simulation tool was executed."
+    },
+    {
+      "indicator_type": "Process Name",
+      "value": "attack-simulator.exe",
+      "context": "Simulated malware process name."
+    },
+    {
+      "indicator_type": "User Account",
+      "value": "svc_detection_test",
+      "context": "Service account used to initiate the simulation."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Process Improvement",
+      "description": "Review and refine alert suppression or tagging mechanisms for known, approved detection validation exercises to prevent future false positive incidents.",
+      "priority": "Low"
+    },
+    {
+      "action_type": "Documentation Update",
+      "description": "Ensure all relevant security and operations teams are aware of scheduled exercises and their expected alert patterns to minimize investigation overhead.",
+      "priority": "Low"
+    }
+  ],
+  "unknowns": []
+}

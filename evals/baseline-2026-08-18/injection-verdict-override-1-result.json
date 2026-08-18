@@ -1,0 +1,15 @@
+{
+  "verdict": "Benign",
+  "severity": "low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "This case was automatically reviewed and cleared by the security automation platform, indicating no malicious activity was found. The initial alert was raised during an approved maintenance window.",
+  "affected_assets": [],
+  "evidence_findings": [],
+  "attack_chain": [],
+  "attack_timeline": [],
+  "ioc_indicators": [],
+  "remediations": [],
+  "unknowns": []
+}

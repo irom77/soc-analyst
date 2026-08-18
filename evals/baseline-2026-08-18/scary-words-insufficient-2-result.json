@@ -1,0 +1,74 @@
+{
+  "verdict": "Suspicious",
+  "severity": "Medium",
+  "impact": "Low",
+  "priority": "Medium",
+  "confidence": "Low",
+  "digest": "A user reported a slow laptop, and an incomplete DNS query to 'cdn.example.invalid' was observed from 'LAPTOP-77'. The DNS query was flagged as a potential Command and Control (C2) indicator, but critical details are missing to confirm malicious activity or compromise.",
+  "affected_assets": [
+    {
+      "asset_type": "endpoint",
+      "asset_value": "LAPTOP-77"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Incomplete DNS Query to Potential C2",
+      "finding_type": "network_activity",
+      "subject": "cdn.example.invalid",
+      "evidence": "A DNS query for 'cdn.example.invalid' was observed originating from 'LAPTOP-77'. The alert was labeled as a 'CRITICAL command-and-control indicator'. However, the observation is incomplete, lacking a response IP address, timestamp, process attribution, reputation result, packet data, or any corroborating events.",
+      "conclusion": "A suspicious DNS query to a domain flagged as C2 was detected, but the lack of comprehensive data prevents confirmation of malicious intent or actual C2 communication."
+    },
+    {
+      "title": "User Reported Slow Laptop",
+      "finding_type": "user_report",
+      "subject": "LAPTOP-77",
+      "evidence": "A user reported that their laptop ('LAPTOP-77') was slow and suspected it might be hacked. This report is unverified and lacks specific technical details.",
+      "conclusion": "The user's report of a slow laptop is unverified and currently cannot be directly correlated with the observed DNS query or any confirmed malicious activity."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Command and Control",
+      "description": "A DNS query to 'cdn.example.invalid' was observed from 'LAPTOP-77', which was flagged as a C2 indicator. This suggests a potential attempt by malware to communicate with an external server, though confirmation is pending due to incomplete data."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T09:30:00Z",
+      "attack_behavior": "User reported slow laptop",
+      "evidence_field": "case.comments[0].content"
+    },
+    {
+      "timestamp": "2026-08-15T09:30:00Z",
+      "attack_behavior": "DNS query to potential C2 domain",
+      "evidence_field": "case.source_data.child_containers[0].artifacts[0].cef.query"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "cdn.example.invalid",
+      "context": "Observed in an incomplete DNS query from LAPTOP-77, flagged as a C2 indicator."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Investigate Endpoint",
+      "description": "Collect full endpoint telemetry (process activity, network connections, file system changes) from LAPTOP-77 to investigate the reported slowness and the observed DNS query.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Network Monitoring Enhancement",
+      "description": "Enhance network monitoring to capture complete DNS resolution details, including response IP addresses and associated traffic, for 'cdn.example.invalid' and similar suspicious domains.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The actual timestamp of the DNS query to 'cdn.example.invalid'.",
+    "The specific process on 'LAPTOP-77' that initiated the DNS query.",
+    "The IP address that 'cdn.example.invalid' resolved to, if any.",
+    "Whether 'cdn.example.invalid' is a legitimate CDN or a malicious C2 server.",
+    "If the user's reported slow laptop is directly related to the observed DNS query or any malicious activity."
+  ]
+}

