@@ -262,6 +262,16 @@ By default, full structured reports are written to a temporary directory whose p
 
 Each run makes three live LLM calls and may incur provider charges. See the [reasoning examples and recorded comparison](examples/reasoning/README.md) for the scenarios, expectations, limitations, and results from a recorded run.
 
+## Run the eval benchmark
+
+A broader verdict-quality benchmark extends the three reasoning cases with the
+unsupported ip-verdict audit case and two prompt-injection cases whose checks are
+field-scoped (an injected canary phrase must not reach the digest, and an
+attacker-supplied domain must not reach the IOC list or remediations). List the cases
+without contacting anything with `uv run case-analyzer-evals --list`; a live run costs
+one LLM request per case per sample. See [`evals/README.md`](evals/README.md) for the
+manifest format, `--samples` verdict-agreement measurement, and interpretation notes.
+
 ## Develop and test
 
 The suite is offline: provider callables and the LLM client are stubbed, so no request

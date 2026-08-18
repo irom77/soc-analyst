@@ -36,6 +36,18 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
 
+## Completed (2026-08-18 eval harness)
+
+- [x] Add the verdict-quality eval harness: `case-analyzer-evals` backed by
+  `src/case_analyzer/evals.py` and `evals/manifest.json`. It reuses the three
+  reasoning cases and the ip-verdict audit case, adds two prompt-injection cases with
+  field-scoped forbidden-content checks (`evals/cases/`), and supports `--samples` for
+  verdict-agreement measurement plus `--only`/`--tag` selection. Harness logic is
+  covered offline in `tests/test_evals.py` with a stubbed analyze function; a live run
+  costs one LLM request per case per sample and never contacts enrichment providers.
+  `test.sh` and the recorded examples are unchanged. Future adversarial-review or
+  self-consistency modes should run against the same manifest for comparability.
+
 ## Completed (2026-08-18 follow-up)
 
 - [x] Make the enrichment budget a real wall-clock bound: it now caps each request's timeout as well as gating the start of a lookup, so a single lookup can no longer run for the full `--enrichment-timeout` past the deadline. A request the budget cuts short is recorded as `skipped` and is not counted against the provider (M-2 follow-up).
