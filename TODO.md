@@ -15,6 +15,17 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 ## Existing
 
+- [ ] Add a dedicated formal compliance-audit mode instead of relying on `user_input`
+  to reshape an `InvestigationReport`. Give it a separate system prompt and structured
+  response schema with named control identifiers, `pass`/`fail`/`not_applicable`/
+  `insufficient_evidence` status, evidence citations back to case fields, policy and
+  framework versions, documented exceptions, remediation owners and due dates, and
+  human approval/audit-trail metadata. Accept applicable policies and control
+  definitions as versioned `--knowledge` records, distinguish "not documented" from
+  "did not occur," validate control coverage deterministically, and require human
+  review before the result can close a case or change a compliance record. Add offline
+  schema and prompt tests plus representative recorded examples before enabling any
+  provider-backed automation.
 - [ ] Address payload quality, duplicated `source_data`, provider cost and rate limits, and excessive noisy enrichment. Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7); VirusTotal has no throttle against its ~4 request/minute public tier (L-5). L-5 is not theoretical: two live runs of the single-observable enrichment example minutes apart returned `HTTP 429` on the second, so a 25-observable run on the public tier will mostly record quota errors. Caching plus a request interval would fix both runs.
 - [ ] Evaluate additional free enrichment providers in this order: ThreatFox for domain/IP IOC matches, GreyNoise Community for internet-scanner context, and URLhaus after complete URL extraction is supported. Keep provider results separately attributed, cache responses, respect enrichment limits, and treat `not_found` as inconclusive. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
 - [x] Add optional AbuseIPDB public-IP reputation through the v2 `check` endpoint. It uses a 30-day report window, runs only when `ABUSEIPDB_API_KEY` is configured, and keeps the result separately attributed. The Standard tier currently permits 1,000 `check` requests per day; higher account tiers have higher limits. Operators remain responsible for confirming that their account and use comply with the provider's current terms.
