@@ -495,6 +495,50 @@ def _virustotal_lookup(
     return "found", "virustotal", details
 
 
+def _abuseipdb_lookup(
+    value: str,
+    timeout: float,
+    api_key: str,
+) -> tuple[str, str, dict[str, Any]]:
+    query = urlencode({"ipAddress": value, "maxAgeInDays": 30})
+    status, body, _ = _http_json(
+        f"https://api.abuseipdb.com/api/v2/check?{query}",
+        {
+            "Accept": "application/json",
+            "User-Agent": _USER_AGENT,
+            "Key": api_key,
+        },
+        timeout,
+    )
+    if body is None:
+        return "error", "abuseipdb", _malformed_body(status)
+    if status != 200:
+        errors = body.get("errors")
+        first = errors[0] if isinstance(errors, list) and errors else None
+        message = first.get("detail") if isinstance(first, Mapping) else body.get("error")
+        return "error", "abuseipdb", {
+            "http_status": status,
+            "error": message or "request failed",
+        }
+    data = body.get("data")
+    if not isinstance(data, Mapping):
+        return "error", "abuseipdb", {
+            "http_status": status,
+            "error": "The provider response did not contain a data object.",
+        }
+    return "found", "abuseipdb", {
+        "abuse_confidence_score": data.get("abuseConfidenceScore"),
+        "total_reports": data.get("totalReports"),
+        "last_reported_at": data.get("lastReportedAt"),
+        "is_whitelisted": data.get("isWhitelisted"),
+        "country_code": data.get("countryCode"),
+        "usage_type": data.get("usageType"),
+        "isp": data.get("isp"),
+        "domain": data.get("domain"),
+        "report_window_days": 30,
+    }
+
+
 def _validate(kind: str, value: str) -> tuple[bool, str]:
     candidate = value.strip().rstrip(".")
     if kind == "ip":
@@ -577,6 +621,8 @@ def enrich_case(
     ip_lookup: Callable[[str, float], tuple[str, str, dict[str, Any]]] = _ip_lookup,
     virustotal_lookup: Callable[[str, str, float, str], tuple[str, str, dict[str, Any]]] = _virustotal_lookup,
     virustotal_api_key: str | None = None,
+    abuseipdb_lookup: Callable[[str, float, str], tuple[str, str, dict[str, Any]]] = _abuseipdb_lookup,
+    abuseipdb_api_key: str | None = None,
 ) -> CaseAnalyzerEnrichment:
     if limit < 1:
         raise ValueError("The enrichment limit must be at least 1.")
@@ -704,6 +750,32 @@ def enrich_case(
                         status="inconclusive",
                         explanation=(
                             "VirusTotal reputation is recorded separately and is not used to overwrite "
+                            "or automatically resolve existing case conclusions."
+                        ),
+                    ),
+                )
+            )
+        abuseipdb_eligible = valid and kind == "ip" and ipaddress.ip_address(value).is_global
+        if abuseipdb_eligible and abuseipdb_api_key:
+            abuse_status, abuse_provider, abuse_details = _call(
+                "abuseipdb",
+                lambda request_timeout: abuseipdb_lookup(value, request_timeout, abuseipdb_api_key),
+            )
+            results.append(
+                EnrichmentObservation(
+                    observable_type=kind,
+                    value=value,
+                    valid=True,
+                    source_paths=source_paths,
+                    provider=abuse_provider,
+                    retrieved_at=retrieved_at,
+                    lookup_status=abuse_status,
+                    details=abuse_details,
+                    artifact_context=context,
+                    comparison_with_case=EnrichmentComparison(
+                        status="inconclusive",
+                        explanation=(
+                            "AbuseIPDB reputation is recorded separately and is not used to overwrite "
                             "or automatically resolve existing case conclusions."
                         ),
                     ),

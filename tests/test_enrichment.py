@@ -292,6 +292,47 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual(3, len(result.observations))
         self.assertFalse(result.truncated)
 
+    def test_abuseipdb_runs_only_for_global_ips_when_api_key_is_provided(self):
+        case = normalize_case(
+            {
+                "id": "case-11b",
+                "title": "AbuseIPDB eligibility",
+                "artifacts": [{"sourceAddress": "10.20.4.115"}, {"destinationAddress": "8.8.8.8"}],
+            }
+        )
+        calls = []
+
+        result = enrich_case(
+            case,
+            limit=2,
+            ip_lookup=_found_ip,
+            abuseipdb_lookup=lambda value, timeout, key: (
+                calls.append((value, key))
+                or ("found", "abuseipdb", {"abuse_confidence_score": 12})
+            ),
+            abuseipdb_api_key="test-key",
+        )
+
+        self.assertEqual([("8.8.8.8", "test-key")], calls)
+        self.assertEqual(
+            ["test-rdap", "abuseipdb", "test-rdap"],
+            [item.provider for item in result.observations],
+        )
+        abuse = next(item for item in result.observations if item.provider == "abuseipdb")
+        self.assertEqual("inconclusive", abuse.comparison_with_case.status)
+
+    def test_abuseipdb_is_skipped_without_an_api_key(self):
+        case = normalize_case({"id": "case-11c", "title": "No key", "destinationAddress": "8.8.8.8"})
+
+        result = enrich_case(
+            case,
+            ip_lookup=_found_ip,
+            abuseipdb_lookup=lambda *args: self.fail("AbuseIPDB must not be called without a key"),
+            abuseipdb_api_key="",
+        )
+
+        self.assertEqual(["test-rdap"], [item.provider for item in result.observations])
+
     def test_invalid_limit_and_timeout_are_rejected(self):
         case = normalize_case({"id": "case-12", "title": "Bounds"})
         with self.assertRaises(ValueError):
@@ -319,12 +360,50 @@ class HttpJsonTests(unittest.TestCase):
         with patch("case_analyzer.enrichment.urlopen", side_effect=lambda *a, **kw: _FakeResponse(["boom"])):
             dns = enrichment_module._domain_lookup("host.example.com", 1.0)
             virustotal = enrichment_module._virustotal_lookup("domain", "host.example.com", 1.0, "key")
+            abuseipdb = enrichment_module._abuseipdb_lookup("8.8.8.8", 1.0, "key")
         with patch("case_analyzer.enrichment._http_json", return_value=(200, None, "https://rdap.test/ip/8.8.8.8")):
             rdap = enrichment_module._ip_lookup("8.8.8.8", 1.0)
 
-        for status, _, details in (dns, virustotal, rdap):
+        for status, _, details in (dns, virustotal, abuseipdb, rdap):
             self.assertEqual("error", status)
             self.assertIn("not an object", details["error"])
+
+    def test_abuseipdb_lookup_uses_header_key_and_reduces_the_response(self):
+        payload = {
+            "data": {
+                "ipAddress": "8.8.8.8",
+                "abuseConfidenceScore": 4,
+                "totalReports": 2,
+                "lastReportedAt": "2026-08-01T00:00:00+00:00",
+                "isWhitelisted": False,
+                "countryCode": "US",
+                "usageType": "Data Center/Web Hosting/Transit",
+                "isp": "Example ISP",
+                "domain": "example.test",
+                "reports": [{"comment": "must not be retained"}],
+            }
+        }
+        with patch("case_analyzer.enrichment._http_json", return_value=(200, payload, "unused")) as request:
+            status, provider, details = enrichment_module._abuseipdb_lookup("8.8.8.8", 1.5, "secret")
+
+        url, headers, timeout = request.call_args.args
+        self.assertIn("ipAddress=8.8.8.8", url)
+        self.assertIn("maxAgeInDays=30", url)
+        self.assertEqual("secret", headers["Key"])
+        self.assertNotIn("secret", url)
+        self.assertEqual(1.5, timeout)
+        self.assertEqual(("found", "abuseipdb"), (status, provider))
+        self.assertEqual(4, details["abuse_confidence_score"])
+        self.assertNotIn("reports", details)
+
+    def test_abuseipdb_error_detail_is_recorded(self):
+        body = {"errors": [{"detail": "Daily rate limit exceeded", "status": 429}]}
+        with patch("case_analyzer.enrichment._http_json", return_value=(429, body, "unused")):
+            status, provider, details = enrichment_module._abuseipdb_lookup("8.8.8.8", 1.0, "key")
+
+        self.assertEqual(("error", "abuseipdb"), (status, provider))
+        self.assertEqual(429, details["http_status"])
+        self.assertEqual("Daily rate limit exceeded", details["error"])
 
     def test_success_returns_status_body_and_answering_url(self):
         with patch(

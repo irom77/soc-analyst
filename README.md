@@ -37,8 +37,9 @@ uv run case-analyzer examples/splunk-soar.json \
 `--enrich` performs local syntax validation, queries Cloudflare's keyless DNS-over-HTTPS
 resolver for domains, and queries the RDAP registry that holds a public IP address for
 its registration data. When `VIRUSTOTAL_API_KEY` is set, it also queries VirusTotal for
-domain, public-IP, and file-hash reputation. Keep the key in the ignored `.env` file;
-without it, VirusTotal is simply skipped. Enrichment still contacts providers when it is
+domain, public-IP, and file-hash reputation. When `ABUSEIPDB_API_KEY` is set, it queries
+AbuseIPDB for public-IP reputation over the preceding 30 days. Keep keys in the ignored
+`.env` file; providers without a configured key are simply skipped. Enrichment still contacts providers when it is
 combined with `--dry-run`, which otherwise sends no data anywhere, so that combination
 requires `--allow-enrichment-in-dry-run` and prints a notice to standard error before
 the first request.
@@ -55,8 +56,8 @@ each request it starts, so a lookup cannot outlive it; a request the budget cuts
 recorded as `skipped` rather than counted against the provider. The failure threshold
 counts lookups that have already failed, and requests in flight are not cancelled, so a
 failing provider can receive up to one further set of concurrent lookups. The limit counts unique
-observables; VirusTotal adds a second observation for each eligible one, so the report
-can hold up to twice that many observations. When the limit truncates a run, observables
+observables; configured reputation providers add separately attributed observations, so
+a public IP can produce RDAP, VirusTotal, and AbuseIPDB observations. When the limit truncates a run, observables
 that a provider can actually answer for are kept first, then values whose type the case
 declared, then values seen in more places; invalid values are dropped first.
 
@@ -95,7 +96,9 @@ one fetch rather than each making their own. The bootstrap fetch and the registr
 share a single lookup timeout, and the query is not started at all if the fetch has
 already used it up.
 
-Cloudflare DNS and RDAP do not require API keys, while VirusTotal does. All are
+Cloudflare DNS and RDAP do not require API keys, while VirusTotal and AbuseIPDB do.
+AbuseIPDB's Standard tier currently permits 1,000 `check` requests per day; consult its
+current API documentation and terms for other tiers and usage restrictions. All are
 external services with availability, privacy, and rate-limit considerations. Observable values are disclosed
 to the selected service. The provider calls are best-effort: a lookup failure is
 recorded on its observation and does not abort the case analysis. Every enriched run
@@ -258,4 +261,4 @@ This repository is distributed under the MIT License. See [LICENSE](LICENSE) for
 
 ## Privacy and safety
 
-The non-dry-run command sends the normalized case, original `source_data`, optional enrichment, knowledge, and analyst input to the configured model provider. `--enrich` also sends extracted domains to Cloudflare DNS, public IPs to the RDAP registries, and, when a key is configured, domains, public IPs, and file hashes to VirusTotal. It does so even when combined with `--dry-run`, which is why that combination must be confirmed with `--allow-enrichment-in-dry-run` and prints a notice to standard error before the first request. Remove secrets and unnecessary personal data, and use providers approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.
+The non-dry-run command sends the normalized case, original `source_data`, optional enrichment, knowledge, and analyst input to the configured model provider. `--enrich` also sends extracted domains to Cloudflare DNS, public IPs to the RDAP registries, and, when keys are configured, domains, public IPs, and file hashes to VirusTotal and public IPs to AbuseIPDB. It does so even when combined with `--dry-run`, which is why that combination must be confirmed with `--allow-enrichment-in-dry-run` and prints a notice to standard error before the first request. Remove secrets and unnecessary personal data, and use providers approved for your security telemetry. The analyzer only writes the path passed to `--output`; it does not update the source platform.

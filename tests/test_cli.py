@@ -108,6 +108,17 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertIn("even with --dry-run", errors.getvalue())
 
+    def test_enrichment_passes_configured_abuseipdb_key(self):
+        with patch.dict("os.environ", {"ABUSEIPDB_API_KEY": "test-abuse-key"}, clear=False):
+            with patch("case_analyzer.cli.enrich_case") as enrich:
+                enrich.return_value = SimpleNamespace(observations=[], truncated=False, stopped_early=False)
+                status = cli.main(
+                    [str(self.case_path), "--enrich", "--dry-run", "--allow-enrichment-in-dry-run"]
+                )
+
+        self.assertEqual(0, status)
+        self.assertEqual("test-abuse-key", enrich.call_args.kwargs["abuseipdb_api_key"])
+
     def test_enrichment_prints_summary_without_corrupting_json_stdout(self):
         self.case_path.write_text(
             json.dumps({"id": "1", "title": "Example", "destinationAddress": "999.1.1.1"}),

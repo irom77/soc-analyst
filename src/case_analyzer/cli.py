@@ -64,8 +64,8 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=25,
         help=(
-            "Maximum unique observables to enrich. VirusTotal adds a second observation per "
-            "eligible observable, so the report can hold up to twice this many observations."
+            "Maximum unique observables to enrich. Configured reputation providers add separate "
+            "observations, so a public IP can produce RDAP, VirusTotal, and AbuseIPDB results."
         ),
     )
     parser.add_argument("--enrichment-timeout", type=float, default=5.0, help="Timeout per provider request in seconds")
@@ -186,7 +186,8 @@ def main(argv=None) -> int:
             if args.dry_run:
                 print(
                     "case-analyzer: --enrich sends observable values to Cloudflare DNS, the RDAP "
-                    "registries, and, when a key is configured, VirusTotal even with --dry-run; "
+                    "registries, and, when keys are configured, VirusTotal and AbuseIPDB even "
+                    "with --dry-run; "
                     "only the LLM call is skipped.",
                     file=sys.stderr,
                 )
@@ -198,6 +199,7 @@ def main(argv=None) -> int:
                 concurrency=args.enrichment_concurrency,
                 failure_threshold=args.enrichment_failure_threshold,
                 virustotal_api_key=os.getenv("VIRUSTOTAL_API_KEY"),
+                abuseipdb_api_key=os.getenv("ABUSEIPDB_API_KEY"),
             )
             _report_enrichment(enrichment)
         if args.explain:
