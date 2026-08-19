@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from case_analyzer import cli, explain_cli
 from case_analyzer.analyzer import LLMProviderError
-from case_analyzer.schemas import CaseSummary
+from case_analyzer.schemas import CaseSummary, EvidenceFinding, InvestigationReport
 
 
 class ExplainCliTests(unittest.TestCase):
@@ -66,6 +66,51 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("", output.getvalue())
         self.assertEqual("Example", json.loads(target.read_text(encoding="utf-8"))["case"]["title"])
+
+    @staticmethod
+    def _report_citing(path: str) -> InvestigationReport:
+        return InvestigationReport(
+            verdict="Suspicious",
+            severity="medium",
+            impact="none",
+            priority="medium",
+            confidence="low",
+            digest="d",
+            evidence_findings=[
+                EvidenceFinding(
+                    title="Beaconing",
+                    finding_type="network",
+                    subject="host",
+                    evidence="e",
+                    conclusion="c",
+                    source_paths=[path],
+                )
+            ],
+        )
+
+    @patch("case_analyzer.cli.analyze_case")
+    def test_an_unresolvable_citation_warns_without_withholding_the_report(self, analyze_case):
+        """The report is the user's; a self-description defect is stderr's problem."""
+        analyze_case.return_value = self._report_citing("artifacts[0].cef.invented")
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            status = cli.main([str(self.case_path)])
+
+        self.assertEqual(0, status)
+        self.assertIn("report check", errors.getvalue())
+        self.assertIn("artifacts[0].cef.invented", errors.getvalue())
+        # stdout stays pure result JSON, so a piped caller is unaffected.
+        self.assertEqual("Suspicious", json.loads(output.getvalue())["verdict"])
+
+    @patch("case_analyzer.cli.analyze_case")
+    def test_a_resolvable_citation_produces_no_warning(self, analyze_case):
+        analyze_case.return_value = self._report_citing("title")
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            status = cli.main([str(self.case_path)])
+
+        self.assertEqual(0, status)
+        self.assertNotIn("report check", errors.getvalue())
 
     @patch("case_analyzer.cli.analyze_case")
     @patch("case_analyzer.cli.summarize_case")

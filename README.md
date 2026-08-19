@@ -121,6 +121,33 @@ pressure; `--llm-timeout` (default `120` seconds) bounds a single request. Exit 
 are `2` for input/configuration errors, `3` for authentication, `4` for rate/quota
 limits, `5` for timeout/connection failures, and `6` for other provider errors.
 
+### Check what the report says about itself
+
+Every evidence finding may cite the case JSON paths it was read from, and the report
+names any list it had to shorten to fit its size cap. Both are the model's own account,
+so the CLI verifies what it can locally after each run — offline, with no second LLM
+call — and reports problems on stderr:
+
+```text
+case-analyzer: report check: 1 problem(s) found. The report is still written; these are
+defects in how it describes itself, not provider errors.
+case-analyzer: report check: 'Beaconing' cites 'artifacts[0].cef.invented', which does
+not resolve in the case
+```
+
+Citations use the same path grammar as enrichment — dotted keys with `[n]` list
+indices, relative to the payload's `case` object, as in
+`source_data.artifacts[0].cef.destinationDnsDomain`. A finding with no citations is
+fine and means uncited; a path that does not resolve is a defect worth knowing about.
+Truncation claims are checked for self-consistency: a list reported as truncated while
+sitting below its cap contradicts itself.
+
+This checks form, not support. A citation that resolves shows the model named a real
+field, never that the field says what the finding claims — an analyst still has to read
+it. A failed check never withholds the report, and stdout stays pure result JSON.
+[`examples/citations/README.md`](examples/citations/README.md) records a live run,
+including the spec ambiguity the first run exposed.
+
 ### Summarize the input case
 
 Add `--summary` to have the model describe what the case contains and stop, instead of

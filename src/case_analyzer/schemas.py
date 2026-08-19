@@ -86,6 +86,16 @@ class EvidenceFinding(BaseModel):
     subject: str
     evidence: str
     conclusion: str
+    source_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Case JSON paths this finding relied on, rooted at the payload's `case` object: "
+            "dotted keys with `[n]` list indices, e.g. "
+            "`source_data.artifacts[0].cef.destinationDnsDomain`. Cite the field the evidence "
+            "was read from, not a paraphrase. Omit rather than guess; an empty list means "
+            "uncited, which is permitted."
+        ),
+    )
 
 
 class AttackChainStep(BaseModel):
@@ -111,6 +121,53 @@ class Remediation(BaseModel):
     priority: str
 
 
+# The list caps stated in `prompts/investigation.md`. Kept here so the truncation
+# post-check can tell a genuine cap from a model that shortened a list for its own
+# reasons. `tests/test_checks.py` asserts the prompt and this table agree.
+LIST_CAPS: dict[str, int] = {
+    "affected_assets": 5,
+    "evidence_findings": 5,
+    "attack_chain": 6,
+    "attack_timeline": 8,
+    "ioc_indicators": 10,
+    "remediations": 6,
+    "unknowns": 5,
+}
+
+TruncatedListName = Literal[
+    "affected_assets",
+    "evidence_findings",
+    "attack_chain",
+    "attack_timeline",
+    "ioc_indicators",
+    "remediations",
+    "unknowns",
+]
+
+
+class TruncationNote(BaseModel):
+    """One list the model shortened to fit its cap.
+
+    Reported per list rather than as a single boolean so a reader knows *which* list to
+    go back to the source for. This is the model's own account of what it left out: it
+    cannot be verified from the response alone, only checked for self-consistency.
+    """
+
+    field: TruncatedListName
+    # Deliberately `int` rather than `int | None`: an optional int renders as
+    # `anyOf: [integer, null]`, which strict structured-output modes handle unevenly.
+    # A note only exists when a list was truncated, so 0 reads unambiguously as
+    # "truncated, count not estimated".
+    omitted_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Approximate number of items left out. Use 0 if you cannot estimate it rather "
+            "than guessing a number."
+        ),
+    )
+
+
 class InvestigationReport(BaseModel):
     verdict: str
     severity: str
@@ -125,3 +182,10 @@ class InvestigationReport(BaseModel):
     ioc_indicators: list[IndicatorOfCompromise] = Field(default_factory=list)
     remediations: list[Remediation] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
+    truncated_fields: list[TruncationNote] = Field(
+        default_factory=list,
+        description=(
+            "Lists that hit their maximum size, one entry each. Report a list here only when "
+            "material content was left out, never to note that a list is merely short."
+        ),
+    )

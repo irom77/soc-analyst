@@ -16,7 +16,9 @@ from .analyzer import (
     build_summary_messages,
     summarize_case,
 )
+from .checks import check_report
 from .enrichment import enrich_case
+from .schemas import InvestigationReport
 
 
 def _json_file(path: Path, max_bytes: int = 0):
@@ -157,6 +159,20 @@ def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = Fal
     _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 
 
+def _report_checks(report: InvestigationReport, case: dict) -> None:
+    """Surface post-check results on stderr, leaving stdout as pure result JSON."""
+    problems = check_report(report, case)
+    if not problems:
+        return
+    print(
+        f"case-analyzer: report check: {len(problems)} problem(s) found. The report is still "
+        "written; these are defects in how it describes itself, not provider errors.",
+        file=sys.stderr,
+    )
+    for problem in problems:
+        print(f"case-analyzer: report check: {problem}", file=sys.stderr)
+
+
 def _report_enrichment(enrichment) -> None:
     counts = Counter(item.lookup_status for item in enrichment.observations)
     print(
@@ -234,7 +250,7 @@ def main(argv=None) -> int:
             if args.explain:
                 _heading(f"4. Invoke the LLM for {wanted}")
             request = summarize_case if args.summary else analyze_case
-            result = request(
+            response = request(
                 case,
                 knowledge_records=knowledge,
                 user_input=args.user_input,
@@ -242,7 +258,15 @@ def main(argv=None) -> int:
                 base_url=args.base_url,
                 api_key=args.api_key,
                 timeout=args.llm_timeout,
-            ).model_dump()
+            )
+            if isinstance(response, InvestigationReport):
+                # Rebuilt rather than threaded through: `build_analysis_payload` is pure,
+                # so this is the same `case` object the request carried.
+                payload = build_analysis_payload(
+                    case, knowledge_records=knowledge, user_input=args.user_input
+                )
+                _report_checks(response, payload["case"])
+            result = response.model_dump()
         rendered = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:
             args.output.write_text(rendered + "\n", encoding="utf-8")

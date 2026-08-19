@@ -67,7 +67,19 @@ from prompt suggestion to contract, making runs comparable and downstream automa
 safe. Leave `severity`/`priority` as free strings initially if source platforms vary
 too much. **Open decision:** final value sets need user sign-off.
 
-### 3. Signal list truncation in the report
+### 3. Signal list truncation in the report — DONE (2026-08-19)
+
+Implemented as `InvestigationReport.truncated_fields: list[TruncationNote]`, one entry
+per shortened list. `field` is enum-constrained to the seven capped collections, so the
+model cannot name a list that does not exist, and `LIST_CAPS` in `schemas.py` records
+the caps the prompt states — a test asserts the two agree. `omitted_count` is a plain
+`int` defaulting to 0 rather than `int | None`: an optional int renders as
+`anyOf: [integer, null]`, which strict structured-output modes handle unevenly, and a
+note only exists when a list *was* truncated, so 0 reads as "count not estimated".
+`checks.py` flags the one contradiction a response can expose — a list reported as
+truncated while sitting below its cap. Under-reporting stays undetectable, as the
+original note anticipated.
+
 
 The investigation prompt caps list sizes (5 findings, 10 IOCs, 8 timeline events, …).
 Add per-list metadata rather than a single boolean — e.g.
@@ -79,7 +91,24 @@ evidence with presentation loss. Note in the field description that this is
 model-reported truncation — it cannot be deterministically verified from the
 response alone.
 
-### 4. Evidence citations by JSON path
+### 4. Evidence citations by JSON path — DONE (2026-08-19)
+
+Implemented as `EvidenceFinding.source_paths`, with the grammar pinned as specified and
+`checks.resolve_case_path` as the deterministic post-check. The live run in
+`examples/citations/` found the spec had one gap the plan did not anticipate: "rooted at
+the payload's `case` object" reads naturally as "starts with `case.`", and the model
+wrote all 16 citations that way, so every correct citation was reported as a defect. The
+prompt now says explicitly not to write the root segment, and the resolver accepts the
+prefixed spelling only after the canonical form fails, so a genuine top-level key named
+`case` is never shadowed.
+
+Partially delivered against the original wording: unresolved citations are reported on
+stderr but not yet *flagged in the run output*, because there is no run output to flag
+them in until item 1's envelope exists — putting the result on `InvestigationReport`
+would make it model-facing, which review point 1 rules out. For the same reason the
+check is wired into the CLI only; the eval harness calls `analyze_case()` directly and
+so does not run it. Both land with items 1–2.
+
 
 Add optional `source_paths: list[str]` to `EvidenceFinding` (align with the existing
 `TimelineEvent.evidence_field`), instructing the model to cite the case JSON paths each
@@ -193,6 +222,12 @@ Start with Tier 1: items 1, 3, and 4 are pure additions; item 2 needs only the e
 value decision. Item 8 deserves its own design pass against a real control set before
 any code.
 
+Progress (2026-08-19): items 3 and 4 are done. They were taken first because they were
+the only Tier 1 items with no open review question — items 1 and 2 are blocked on review
+points 1 and 2 (where provenance lives, and which API guarantees it), and Tier 2 item 5
+is blocked on review point 3 (whether pacing waits consume the enrichment budget). Those
+three decisions are the gate on everything remaining.
+
 ## Review — to be verified before implementation
 
 The plan is close to implementation-ready, but these design details should be
@@ -201,7 +236,9 @@ resolved before work begins:
 1. **Keep locally generated metadata out of the model-facing schema.** Adding
    `report_metadata` directly to `InvestigationReport` or `CaseSummary` while passing
    that schema to `with_structured_output()` would expose the field to the model and
-   invite it to populate data that must be generated locally. Prefer a locally
+   invite it to populate data that must be generated locally. (The `with_structured_output()`
+   call named here is gone as of the LiteLLM SDK migration; the same schema is now passed
+   as `response_format=`, so the concern is unchanged and only the API name is stale.) Prefer a locally
    constructed envelope such as `{report_metadata, report}`, or separate
    model-facing response schemas from the final saved-result schemas.
 2. **Make the provenance guarantee part of the public execution path.** An optional

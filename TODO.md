@@ -12,13 +12,14 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
-from the 2026-08-18 limitations review. Its eval-harness prerequisite and
-prompt-injection item are done (see "Completed" below); the remaining tiers —
-report provenance and enum verdicts, evidence citations, enrichment caching, and the
-dedicated audit mode — are open there and not duplicated here.
+from the 2026-08-18 limitations review. Its eval-harness prerequisite,
+prompt-injection item, and Tier 1 items 3 and 4 are done (see "Completed" below); the
+remaining tiers — report provenance and enum verdicts, enrichment caching, and the
+dedicated audit mode — are open there and not duplicated here. Three design questions in
+that plan's review section gate the rest of it.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (89 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (114 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -42,6 +43,41 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 ## Extraction coverage
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
+
+## Completed (2026-08-19 report self-description)
+
+- [x] Tier 1 item 4 — evidence citations by JSON path. `EvidenceFinding.source_paths`
+  cites the case fields a finding was read from, using the grammar enrichment already
+  emits. `checks.resolve_case_path` verifies each one against the rendered payload,
+  locally and with no second LLM call. The live run recorded in
+  [`examples/citations/`](examples/citations/README.md) reported 16 of 16 citations
+  unresolved on the first try: the paths were right, but the model spelled the root out
+  as `case.…`, which "rooted at the payload's `case` object" invites. Fixed on both
+  sides — the prompt says not to write the root segment, and the resolver retries
+  without a `case.` prefix only after the canonical form fails, so a real top-level key
+  of that name still wins. Re-verified offline: 16 of 16 resolve.
+
+- [x] Tier 1 item 3 — truncation signalling. `InvestigationReport.truncated_fields`
+  names each list shortened to fit its cap, enum-constrained to the seven capped
+  collections. `omitted_count` is a plain `int` rather than `int | None`, because an
+  optional int renders as `anyOf: [integer, null]` and strict structured-output modes
+  handle that unevenly; the whole report schema is now free of `anyOf`. `LIST_CAPS`
+  records the caps the prompt states and a test asserts they agree. The post-check
+  catches the one contradiction a response can expose — truncation claimed for a list
+  below its cap; under-reporting is not detectable from a response and is not claimed
+  to be.
+
+  Not yet delivered, and blocked rather than skipped: the plan asks for unresolved
+  citations to be flagged *in the run output* as well as on stderr, and for the check to
+  cover the eval harness, which calls `analyze_case()` directly. Both need a result
+  envelope that does not exist yet — putting the outcome on `InvestigationReport` would
+  make it model-facing, which the plan's own review rules out. They land with Tier 1
+  items 1–2.
+
+  One observation worth watching rather than acting on: in the recorded run
+  `truncated_fields` was empty while `evidence_findings`, `remediations` and `unknowns`
+  each sat exactly at their cap. Consistent with a complete report, equally consistent
+  with under-reporting, and not decidable from one sample.
 
 ## Completed (2026-08-19 LiteLLM proxy)
 

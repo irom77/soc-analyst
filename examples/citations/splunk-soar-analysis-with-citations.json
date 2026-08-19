@@ -1,0 +1,198 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "Critical",
+  "confidence": "High",
+  "digest": "A finance workstation (WS-FIN-09) was compromised via a phishing attachment, leading to the execution of an encoded PowerShell script. This script initiated command and control (C2) beaconing to a known malicious domain (stage2.malicious-domain.xyz) and IP (198.51.100.44) over TLS. The C2 domain is associated with Fast Flux DNS and has a high malicious reputation. Network isolation of the affected host has been approved.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "WS-FIN-09"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.20.4.115"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Initial Execution via Phishing Attachment",
+      "finding_type": "Execution",
+      "subject": "WS-FIN-09",
+      "evidence": "excel.exe spawned powershell.exe with a hidden, encoded command line: powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>. This activity was detected on host WS-FIN-09 (IP 10.20.4.115).",
+      "conclusion": "An initial compromise occurred on WS-FIN-09, likely via a phishing attachment, leading to the execution of a malicious PowerShell script.",
+      "source_paths": [
+        "case.source_data.child_containers[0].artifacts[0].cef.parentProcessName",
+        "case.source_data.child_containers[0].artifacts[0].cef.processName",
+        "case.source_data.child_containers[0].artifacts[0].cef.processCommandLine",
+        "case.source_data.child_containers[0].artifacts[0].cef.sourceHostName",
+        "case.source_data.child_containers[0].artifacts[0].cef.sourceAddress"
+      ]
+    },
+    {
+      "title": "Encoded PowerShell Decoded to C2 Download",
+      "finding_type": "Code Obfuscation",
+      "subject": "PowerShell command",
+      "evidence": "Analysis of the encoded PowerShell command revealed an attempt to download content using IEX Net.WebClient from a remote stage2 domain.",
+      "conclusion": "The encoded PowerShell was used to evade detection and establish further communication with an attacker-controlled domain.",
+      "source_paths": [
+        "case.source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Outbound Command and Control (C2) Beaconing",
+      "finding_type": "Network Activity",
+      "subject": "10.20.4.115 to 198.51.100.44",
+      "evidence": "Host 10.20.4.115 (WS-FIN-09) established a persistent TLS session (450s duration with 30-second interval pulses) to 198.51.100.44 on port 443. This traffic is identified as C2 beaconing.",
+      "conclusion": "WS-FIN-09 is actively communicating with an external C2 server.",
+      "source_paths": [
+        "case.source_data.child_containers[1].artifacts[0].cef.sourceAddress",
+        "case.source_data.child_containers[1].artifacts[0].cef.destinationAddress",
+        "case.source_data.child_containers[1].artifacts[0].cef.destinationPort",
+        "case.source_data.child_containers[1].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Malicious C2 Domain Identified",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "The destination domain stage2.malicious-domain.xyz (resolving to 198.51.100.44) is identified as malicious, uses Fast Flux DNS, and has a reputation score of 89/100. It also matches a US-CERT advisory bulletin.",
+      "conclusion": "The C2 infrastructure is confirmed to be malicious and associated with known threat activity.",
+      "source_paths": [
+        "case.artifacts[0].cef.destinationDnsDomain",
+        "case.artifacts[0].cef.destinationAddress",
+        "case.artifacts[0].notes[0].content",
+        "case.artifacts[0].comments[0].comment"
+      ]
+    },
+    {
+      "title": "Host Network Isolation Approved",
+      "finding_type": "Remediation Action",
+      "subject": "WS-FIN-09",
+      "evidence": "Network isolation for host WS-FIN-09 was approved by the SOC Lead at 2026-08-14T18:25:30.000Z.",
+      "conclusion": "Initial containment measures are being implemented to prevent further compromise or data exfiltration.",
+      "source_paths": [
+        "case.comments[0].comment",
+        "case.comments[0].create_time"
+      ]
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Phishing delivery mechanism, likely an attachment, led to the initial compromise of WS-FIN-09."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "A user opened a malicious attachment, causing excel.exe to spawn powershell.exe with an encoded command."
+    },
+    {
+      "attack_stage": "Defense Evasion",
+      "description": "The use of an encoded PowerShell command was an attempt to bypass security controls and obfuscate malicious intent."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The PowerShell script initiated a download from a remote domain and established persistent C2 beaconing to stage2.malicious-domain.xyz (198.51.100.44) over TLS."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:15:02.000Z",
+      "attack_behavior": "Suspicious process execution (excel.exe spawning powershell.exe).",
+      "evidence_field": "case.source_data.child_containers[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:16:30.000Z",
+      "attack_behavior": "Outbound beacon traffic detected.",
+      "evidence_field": "case.source_data.child_containers[1].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:19:12.000Z",
+      "attack_behavior": "Persistent TLS session with periodic pulses observed.",
+      "evidence_field": "case.source_data.child_containers[1].artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:20:45.000Z",
+      "attack_behavior": "Encoded PowerShell payload deobfuscated, revealing C2 download attempt.",
+      "evidence_field": "case.source_data.child_containers[0].artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:22:15.000Z",
+      "attack_behavior": "C2 beacon domain observable recorded.",
+      "evidence_field": "case.artifacts[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "Threat intelligence confirms C2 domain as malicious.",
+      "evidence_field": "case.artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:25:30.000Z",
+      "attack_behavior": "Host network isolation approved.",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "Command and Control (C2) beaconing domain, identified as malicious and using Fast Flux DNS."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "198.51.100.44",
+      "context": "C2 server IP address, destination for outbound beacon traffic from WS-FIN-09."
+    },
+    {
+      "indicator_type": "Command Line",
+      "value": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+      "context": "Malicious PowerShell command executed on WS-FIN-09, used for defense evasion and C2 initiation."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "10.20.4.115",
+      "context": "Internal IP address of the compromised host WS-FIN-09."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Isolate host WS-FIN-09 (IP 10.20.4.115) from the network to prevent further C2 communication and lateral movement.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Block stage2.malicious-domain.xyz and 198.51.100.44 at network perimeter devices (firewall, proxy, DNS) to prevent further C2 activity and protect other assets.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Conduct a full forensic analysis of WS-FIN-09 to identify the initial infection vector, persistence mechanisms, and any further compromise.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Remove any malicious files or persistence mechanisms found on WS-FIN-09.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Recovery",
+      "description": "Restore WS-FIN-09 from a clean backup or reimage the system after forensic analysis.",
+      "priority": "Medium"
+    },
+    {
+      "action_type": "Lessons Learned",
+      "description": "Review security awareness training for users, especially regarding phishing attachments, and enhance endpoint detection rules for encoded PowerShell commands.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The full decoded content of the Base64 payload beyond the IEX Net.WebClient download attempt.",
+    "The specific details of the initial phishing email (sender, subject, attachment name).",
+    "Whether any data exfiltration occurred during the C2 session.",
+    "The full extent of the compromise, including potential lateral movement or other affected systems.",
+    "The specific variant of Cobalt Strike or other malware used."
+  ],
+  "truncated_fields": []
+}

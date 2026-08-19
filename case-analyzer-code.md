@@ -271,11 +271,23 @@ report = InvestigationReport.model_validate_json(resp.choices[0].message.content
 
 `response_format` supplies the `InvestigationReport` structure to the model, and Pydantic is the sole validator of what comes back. This is more reliable than asking for arbitrary JSON and manually interpreting it afterward. LiteLLM's own `enable_json_schema_validation` is deliberately left off: its failure carries the raw model response, which would survive on the exception chain and defeat the sanitized error contract.
 
-### Step 6: validate and write the report
+### Step 6: validate the report
 
-`InvestigationReport` requires the main judgment fields: verdict, severity, impact, priority, confidence, and digest. Its evidence, attack-chain, timeline, IOC, remediation, asset, and unknown collections default to empty lists.
+`InvestigationReport` requires the main judgment fields: verdict, severity, impact, priority, confidence, and digest. Its evidence, attack-chain, timeline, IOC, remediation, asset, unknown, and truncation collections default to empty lists.
 
 Nested Pydantic models validate the fields within each list. For example, every IOC requires `indicator_type`, `value`, and `context`. A malformed structured response fails validation instead of silently producing a partial report.
+
+### Step 7: check the report against the payload
+
+Two fields are the model's account of its own work, and `checks.py` verifies both locally — no second LLM call, no network.
+
+`EvidenceFinding.source_paths` cites the case JSON paths a finding was read from. The grammar is the one `EnrichmentObservation.source_paths` already emits: dotted object keys with `[n]` list indices, relative to the payload's `case` object, with a trailing `#host`/`#domain` marker stripped before resolving because it records where a derived observable came from rather than a traversable segment. A redundant leading `case.` is accepted after the canonical form fails, so a real top-level key of that name is never shadowed. An empty list is permitted and means uncited; a path that does not resolve is reported.
+
+`InvestigationReport.truncated_fields` names each list the model shortened to fit its cap, so a large incident cannot silently arrive as a small report. The check is one-sided by necessity: a claim about a list sitting *below* its cap is a contradiction the response itself exposes, but nothing in a response can prove content was left out, so under-reporting is undetectable here.
+
+Both checks verify form, not support. A citation that resolves proves the model named a field that exists in the payload it was given — never that the field says what the finding claims. Results go to stderr; stdout stays pure result JSON, and a failed check never withholds the report. Persisting the check outcome into the saved result waits on the provenance envelope in `improvement-plan-2026-08-18.md`, as does routing the check through the eval harness, which calls `analyze_case()` directly.
+
+### Step 8: write the report
 
 The CLI calls `model_dump()`, formats the result as indented JSON, and either prints it or writes it to `--output`. It never changes the input export or sends results back to the originating SOAR platform.
 
