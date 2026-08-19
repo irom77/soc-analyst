@@ -102,6 +102,26 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `custom_llm_provider="openai"`. Asserted at the application boundary and with
   `get_llm_provider` canaries.
 
+- [x] Stop chaining provider exceptions onto `LLMProviderError` (review finding,
+  2026-08-19). `raise ... from exc` kept the original in `__cause__`, where every
+  formatted traceback reprints it, so the sanitized message removed raw text that the
+  traceback then republished — the exact route `case-analyzer-code.md` already said
+  disqualified `enable_json_schema_validation`. Two paths were confirmed leaking before
+  the fix: a provider error carried its raw response text, and a schema mismatch carried
+  the model's **entire** rejected output as `ValidationError.errors()[0]["input"]`. Each
+  handler now builds the error and the raise happens after the `try` statement, leaving
+  `__cause__` and `__context__` unset. Exit codes are unchanged (`5` reconfirmed
+  end-to-end against a closed port). `LITELLM_LOG=DEBUG` replaces the cause for
+  development. Regression tests assert `__cause__`, `__context__`, and the formatted
+  traceback; both fail against the pre-fix code.
+
+- [x] Guard the native-prefix documentation against drift (review finding, 2026-08-19).
+  The policy is restated in `README.md`, `FAQ.md`, `case-analyzer-code.md` and
+  `.env.example`, none of which can reasonably defer to another. A test asserts every
+  entry of `_NATIVE_PREFIXES` appears in all four, so adding a provider without
+  documenting it fails the suite. `_provider_kwargs` keeps its string-prefix form; a
+  route type is warranted when a second native provider lands, not before.
+
 - [x] Add the offline timeout regression test. Enters through `_request_structured`
   against a loopback `ThreadingHTTPServer`, asserts `exit_code == 5`; `daemon_threads`
   keeps teardown under a second.

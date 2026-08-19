@@ -310,7 +310,7 @@ The CLI reports these expected input/configuration problems with exit code `2`:
 - an unsupported format;
 - missing model configuration.
 
-Provider failures are classified and reported as `case-analyzer: LLM error:` messages with their own exit codes: `3` for authentication, `4` for rate or quota limits, `5` for timeouts and connection failures, and `6` for other provider errors, including a structured response that does not match `InvestigationReport`. The messages omit credentials, request payloads, and raw model output; the underlying exception is retained as the `__cause__` for a production wrapper that wants to log, classify, or retry according to its own operational policy.
+Provider failures are classified and reported as `case-analyzer: LLM error:` messages with their own exit codes: `3` for authentication, `4` for rate or quota limits, `5` for timeouts and connection failures, and `6` for other provider errors, including a structured response that does not match `InvestigationReport`. The messages omit credentials, request payloads, and raw model output, and the underlying exception is deliberately **not** chained: `__cause__` and `__context__` are both unset, so a wrapper that logs or reprints a traceback cannot republish what the message withheld. A provider exception carries raw response text, and a Pydantic `ValidationError` carries the model's entire rejected output, so keeping either as a cause would have defeated the contract by the same route as `enable_json_schema_validation` above. A production wrapper classifies and retries on `LLMProviderError.exit_code`; `LITELLM_LOG=DEBUG` exposes the underlying failure during development.
 
 ## Independence from the Django worker
 

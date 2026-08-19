@@ -1,7 +1,9 @@
 import json
 import os
+import pathlib
 import threading
 import time
+import traceback
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import MagicMock, patch
@@ -10,6 +12,7 @@ from litellm import exceptions as litellm_exceptions
 
 from case_analyzer.adapters import normalize_case
 from case_analyzer.analyzer import (
+    _NATIVE_PREFIXES,
     LLMProviderError,
     _request_structured,
     analyze_case,
@@ -209,6 +212,25 @@ class ProviderRoutingTests(unittest.TestCase):
         self.assertEqual("gemini", provider)
 
 
+class RoutingPolicyDocumentationTests(unittest.TestCase):
+    """The native-prefix list is stated in four places a reader may consult alone.
+
+    Consolidating them is not an option — a `.env.example` comment and a README table
+    have to stand on their own — so drift is guarded here instead: adding a provider to
+    `_NATIVE_PREFIXES` without documenting it fails the suite rather than going unnoticed.
+    """
+
+    DOCUMENTS = ("README.md", "FAQ.md", "case-analyzer-code.md", ".env.example")
+
+    def test_every_native_prefix_is_documented(self):
+        root = pathlib.Path(__file__).resolve().parent.parent
+        for name in self.DOCUMENTS:
+            text = (root / name).read_text(encoding="utf-8")
+            for prefix in _NATIVE_PREFIXES:
+                with self.subTest(document=name, prefix=prefix):
+                    self.assertIn(prefix, text)
+
+
 class ProviderErrorTranslationTests(unittest.TestCase):
     """Every provider failure must reach the CLI as a sanitized `LLMProviderError`.
 
@@ -257,6 +279,45 @@ class ProviderErrorTranslationTests(unittest.TestCase):
 
         self.assertEqual(6, raised.exception.exit_code)
         self.assertNotIn("raw model text", str(raised.exception))
+
+    def test_a_provider_error_is_not_chained_onto_the_sanitized_error(self):
+        """`raise ... from exc` would republish the raw text the message just removed.
+
+        A chained cause is not private: it reaches `__cause__`, `__context__`, and every
+        formatted traceback a caller or logging handler produces.
+        """
+        leaky = litellm_exceptions.APIResponseValidationError("raw model text", "openai", "test-model")
+
+        with patch.dict(os.environ, _ENVIRONMENT, clear=True):
+            with patch("case_analyzer.analyzer.litellm.completion") as completion:
+                completion.side_effect = leaky
+                with self.assertRaises(LLMProviderError) as raised:
+                    analyze_case(_case())
+
+        self._assert_no_chained_text(raised.exception, "raw model text")
+
+    def test_a_schema_mismatch_does_not_chain_the_model_output(self):
+        """Pydantic keeps the whole rejected document in `ValidationError.errors()[0]`.
+
+        For a schema mismatch that document *is* the model's output, so chaining the
+        validation error leaks strictly more than any provider error would.
+        """
+        rejected = json.dumps({"verdict": "Benign", "digest": "unvalidated model output"})
+
+        with patch.dict(os.environ, _ENVIRONMENT, clear=True):
+            with patch("case_analyzer.analyzer.litellm.completion") as completion:
+                completion.return_value = _completion_response(rejected)
+                with self.assertRaises(LLMProviderError) as raised:
+                    analyze_case(_case())
+
+        self.assertEqual(6, raised.exception.exit_code)
+        self._assert_no_chained_text(raised.exception, "unvalidated model output")
+
+    def _assert_no_chained_text(self, exc: LLMProviderError, secret: str) -> None:
+        self.assertIsNone(exc.__cause__)
+        self.assertIsNone(exc.__context__)
+        formatted = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        self.assertNotIn(secret, formatted)
 
 
 class TimeoutForwardingTests(unittest.TestCase):

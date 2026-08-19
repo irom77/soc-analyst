@@ -152,6 +152,14 @@ def _request_structured(
     selected_key = api_key or os.getenv("CASE_ANALYZER_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not selected_key:
         raise ValueError("Set CASE_ANALYZER_API_KEY or pass --api-key.")
+    # Each handler below only *builds* the sanitized error; the raise happens after the
+    # `try` statement. `raise ... from exc` would defeat the sanitizing, because the
+    # original is kept in `__cause__` and reprinted by every formatted traceback, and
+    # these causes carry exactly what must not escape: a provider error echoes raw
+    # response text, and a Pydantic `ValidationError` carries the model's full output as
+    # `errors()[0]["input"]`. Raising outside the handler leaves both `__cause__` and
+    # `__context__` unset, so the sanitized message is all a caller or log can reach.
+    # Set `LITELLM_LOG=DEBUG` to see the underlying failure while developing.
     try:
         resp = litellm.completion(
             model=selected_model,
@@ -166,32 +174,33 @@ def _request_structured(
         )
         return schema.model_validate_json(resp.choices[0].message.content)
     except ValidationError as exc:
-        raise LLMProviderError(
+        sanitized = LLMProviderError(
             f"The model response did not match the {schema.__name__} schema: {_validation_summary(exc)}.",
             6,
-        ) from exc
-    except AuthenticationError as exc:
-        raise LLMProviderError("LLM authentication failed; check the configured API key.", 3) from exc
-    except RateLimitError as exc:
-        raise LLMProviderError(
+        )
+    except AuthenticationError:
+        sanitized = LLMProviderError("LLM authentication failed; check the configured API key.", 3)
+    except RateLimitError:
+        sanitized = LLMProviderError(
             "LLM rate limit or quota was exceeded; retry later or check provider limits.", 4
-        ) from exc
+        )
     # `Timeout` subclasses `APIConnectionError`, so it must be caught first.
-    except Timeout as exc:
-        raise LLMProviderError("LLM request timed out; check the endpoint and try again.", 5) from exc
-    except APIConnectionError as exc:
-        raise LLMProviderError("Could not connect to the LLM endpoint; check the URL and network.", 5) from exc
+    except Timeout:
+        sanitized = LLMProviderError("LLM request timed out; check the endpoint and try again.", 5)
+    except APIConnectionError:
+        sanitized = LLMProviderError("Could not connect to the LLM endpoint; check the URL and network.", 5)
     # LiteLLM reports an unreachable endpoint as a synthetic 500 rather than a connection
     # error, and drops the original exception, so this class cannot be told apart from a
     # genuine provider outage. Both mean no answer was obtained, which is exit 5.
-    except (InternalServerError, ServiceUnavailableError, BadGatewayError) as exc:
-        raise LLMProviderError(
+    except (InternalServerError, ServiceUnavailableError, BadGatewayError):
+        sanitized = LLMProviderError(
             "Could not get a response from the LLM endpoint; check the URL, network, and provider status.", 5
-        ) from exc
+        )
     except (NotFoundError, BadRequestError, PermissionDeniedError, UnprocessableEntityError) as exc:
-        raise LLMProviderError(f"LLM provider returned HTTP {exc.status_code}.", 6) from exc
+        sanitized = LLMProviderError(f"LLM provider returned HTTP {exc.status_code}.", 6)
     except OpenAIError as exc:
-        raise LLMProviderError(f"LLM request failed ({type(exc).__name__}).", 6) from exc
+        sanitized = LLMProviderError(f"LLM request failed ({type(exc).__name__}).", 6)
+    raise sanitized from None
 
 
 def analyze_case(
