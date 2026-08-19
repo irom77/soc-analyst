@@ -24,7 +24,7 @@ def _report(**overrides) -> InvestigationReport:
         "severity": "medium",
         "impact": "none",
         "priority": "medium",
-        "confidence": "low",
+        "confidence": "Low",
         "digest": "d",
     }
     return InvestigationReport(**{**base, **overrides})

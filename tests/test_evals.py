@@ -81,8 +81,14 @@ class ManifestTests(unittest.TestCase):
 
 class CheckReportTests(unittest.TestCase):
     def test_verdict_check_is_case_insensitive(self):
-        entry = _entry()
-        self.assertEqual(check_report(entry, _report(verdict="benign").model_dump()), [])
+        """The casing that can vary is the manifest's; the report's is fixed by its enum.
+
+        A hand-written `allowed_verdicts` should not have to match the schema's spelling
+        character for character, so the comparison stays case-insensitive even though
+        the report side can no longer drift.
+        """
+        entry = _entry(allowed_verdicts=["benign", "false positive"])
+        self.assertEqual(check_report(entry, _report(verdict="Benign").model_dump()), [])
         failures = check_report(entry, _report(verdict="True Positive").model_dump())
         self.assertEqual(len(failures), 1)
         self.assertIn("verdict", failures[0])

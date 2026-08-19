@@ -33,7 +33,7 @@ _MINIMAL_REPORT_JSON = json.dumps(
         "severity": "low",
         "impact": "none",
         "priority": "low",
-        "confidence": "low",
+        "confidence": "Low",
         "digest": "d",
     }
 )

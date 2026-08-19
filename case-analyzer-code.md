@@ -274,7 +274,7 @@ report = InvestigationReport.model_validate_json(resp.choices[0].message.content
 
 ### Step 6: validate the report
 
-`InvestigationReport` requires the main judgment fields: verdict, severity, impact, priority, confidence, and digest. Its evidence, attack-chain, timeline, IOC, remediation, asset, unknown, and truncation collections default to empty lists.
+`InvestigationReport` requires the main judgment fields: verdict, severity, impact, priority, confidence, and digest. `verdict` and `confidence` are `Literal` types — closed sets rendered into the request schema as `enum`, so the provider is asked to honor them and Pydantic rejects anything else. This is what makes archived runs comparable without normalizing spellings, and it is enforced rather than requested: an off-list wording is a schema violation, exit 6, no report. `severity`, `impact`, and `priority` stay free strings because they restate the source platform's vocabulary, which the recorded exports show varies. Its evidence, attack-chain, timeline, IOC, remediation, asset, unknown, and truncation collections default to empty lists.
 
 Nested Pydantic models validate the fields within each list. For example, every IOC requires `indicator_type`, `value`, and `context`. A malformed structured response fails validation instead of silently producing a partial report.
 

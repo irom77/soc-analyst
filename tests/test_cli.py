@@ -94,7 +94,7 @@ class ExplainCliTests(unittest.TestCase):
             severity="medium",
             impact="none",
             priority="medium",
-            confidence="low",
+            confidence="Low",
             digest="d",
             evidence_findings=[
                 EvidenceFinding(

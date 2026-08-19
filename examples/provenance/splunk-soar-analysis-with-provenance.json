@@ -1,0 +1,187 @@
+{
+  "verdict": "True Positive",
+  "severity": "Critical",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "High",
+  "digest": "A workstation (WS-FIN-09) in the finance subnet was compromised via a phishing attachment, leading to the execution of an encoded PowerShell script. This script established a persistent C2 communication channel with a malicious domain (stage2.malicious-domain.xyz, 198.51.100.44) exhibiting beaconing behavior and Fast Flux DNS characteristics, indicative of Cobalt Strike activity. Network isolation of the host has been approved.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "WS-FIN-09"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.20.4.115"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Phishing-initiated Process Execution",
+      "finding_type": "Execution",
+      "subject": "WS-FIN-09",
+      "evidence": "Microsoft Excel (parent process) spawned 'powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>' on host WS-FIN-09 (10.20.4.115).",
+      "conclusion": "Initial access was achieved via a phishing attachment, leading to the execution of a malicious script.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.parentProcessName",
+        "source_data.child_containers[0].artifacts[0].cef.processName",
+        "source_data.child_containers[0].artifacts[0].cef.processCommandLine",
+        "source_data.child_containers[0].artifacts[0].cef.sourceHostName",
+        "source_data.child_containers[0].artifacts[0].cef.sourceAddress"
+      ]
+    },
+    {
+      "title": "Encoded PowerShell Payload Analysis",
+      "finding_type": "Defense Evasion",
+      "subject": "Encoded PowerShell command",
+      "evidence": "Analysis of the encoded PowerShell payload revealed an attempt to download content via 'IEX Net.WebClient' from a remote stage2 domain.",
+      "conclusion": "The PowerShell script serves as a dropper or downloader for subsequent attack stages, utilizing encoding for defense evasion.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Outbound C2 Beaconing Detected",
+      "finding_type": "Command and Control",
+      "subject": "Network traffic from WS-FIN-09",
+      "evidence": "WS-FIN-09 (10.20.4.115) established a persistent TLS session lasting 450 seconds with periodic 30-second interval pulses to 198.51.100.44 on port 443.",
+      "conclusion": "Confirmed C2 beaconing activity from the compromised host, consistent with Cobalt Strike.",
+      "source_paths": [
+        "source_data.child_containers[1].artifacts[0].cef.sourceAddress",
+        "source_data.child_containers[1].artifacts[0].cef.destinationAddress",
+        "source_data.child_containers[1].artifacts[0].cef.destinationPort",
+        "source_data.child_containers[1].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Malicious C2 Infrastructure Identified",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz (198.51.100.44)",
+      "evidence": "The domain 'stage2.malicious-domain.xyz' (198.51.100.44) is resolved via Fast Flux DNS, has a reputation score of 89/100 Malicious, and matches a US-CERT advisory bulletin.",
+      "conclusion": "The C2 infrastructure is highly malicious and associated with known threat actor activity.",
+      "source_paths": [
+        "artifacts[0].cef.destinationDnsDomain",
+        "artifacts[0].cef.destinationAddress",
+        "artifacts[0].notes[0].content",
+        "artifacts[0].comments[0].comment"
+      ]
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Phishing email delivered a malicious attachment (Excel document) to the user on WS-FIN-09."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "User opened the malicious attachment, leading to Excel spawning an encoded PowerShell command."
+    },
+    {
+      "attack_stage": "Defense Evasion",
+      "description": "Encoded PowerShell command was used to obfuscate the malicious intent and download further stages."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The PowerShell script established a persistent TLS C2 beacon to 'stage2.malicious-domain.xyz' (198.51.100.44)."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:15:02.000Z",
+      "attack_behavior": "Suspicious process execution (Excel spawning PowerShell) detected on WS-FIN-09.",
+      "evidence_field": "source_data.child_containers[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:16:30.000Z",
+      "attack_behavior": "Outbound beacon traffic to untrusted subnet detected from WS-FIN-09.",
+      "evidence_field": "source_data.child_containers[1].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:20:45.000Z",
+      "attack_behavior": "Decoded PowerShell payload identified as attempting web download from remote stage2 domain.",
+      "evidence_field": "source_data.child_containers[0].artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "C2 domain 'stage2.malicious-domain.xyz' identified as malicious with Fast Flux DNS.",
+      "evidence_field": "artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:25:30.000Z",
+      "attack_behavior": "Host network isolation approved for WS-FIN-09.",
+      "evidence_field": "comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "Command and Control (C2) domain"
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "198.51.100.44",
+      "context": "Command and Control (C2) IP address"
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "10.20.4.115",
+      "context": "Compromised host IP address (WS-FIN-09)"
+    },
+    {
+      "indicator_type": "Host Name",
+      "value": "WS-FIN-09",
+      "context": "Compromised workstation"
+    },
+    {
+      "indicator_type": "Process Command Line",
+      "value": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+      "context": "Malicious PowerShell execution"
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Isolate WS-FIN-09 from the network immediately to prevent further compromise or lateral movement.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Initiate forensic analysis on WS-FIN-09 to identify persistence mechanisms, lateral movement, and data exfiltration. Remove all malicious artifacts.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Hardening",
+      "description": "Block the malicious domain 'stage2.malicious-domain.xyz' and IP address '198.51.100.44' at network perimeter firewalls and DNS resolvers.",
+      "priority": "High"
+    },
+    {
+      "action_type": "User Education",
+      "description": "Conduct targeted phishing awareness training for users, especially those in the finance department, to prevent similar incidents.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The full decoded content of the Base64 payload is not provided, only its general intent.",
+    "Specific details of the phishing email (sender, subject, attachment name) are not available.",
+    "The full extent of data exfiltration or lateral movement from WS-FIN-09 is currently unknown."
+  ],
+  "truncated_fields": [],
+  "case_analyzer_run": {
+    "generated_at": "2026-08-19T22:32:16.656437Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "cf4c5fd563d303572a1e23a012d8982bdf10515ac3a8d5bec5c9cc4ceb51365b",
+    "payload_sha256": "96312e8a784de5e2fb26468b65e9878d19eb324a51dbc6ccfc968a805c23d537",
+    "input_file_sha256": "f1458fdb60ec3f08d62450b8ba52310f5a159a6f39457d7d14e30bd9f0980a74",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {
+      "ran": true,
+      "problems": []
+    }
+  }
+}

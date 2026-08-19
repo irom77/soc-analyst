@@ -168,12 +168,25 @@ class TruncationNote(BaseModel):
     )
 
 
+# The decision vocabulary, closed. These two fields are what makes runs comparable and
+# downstream automation safe, so they are a contract rather than a prompt suggestion: an
+# off-list value fails schema validation like any other malformed response. The values
+# are the ones every recorded run and every eval case already used; the enum writes down
+# existing behavior instead of imposing new behavior.
+Verdict = Literal["True Positive", "Suspicious", "False Positive", "Benign", "Insufficient Data"]
+Confidence = Literal["Low", "Medium", "High"]
+
+
 class InvestigationReport(BaseModel):
-    verdict: str
+    verdict: Verdict
+    # `severity`, `impact`, and `priority` stay free strings deliberately. They restate
+    # the source platform's own vocabulary, which varies — the recorded exports carry
+    # `critical`, `informational`, and lowercase spellings — so a closed set here would
+    # constrain someone else's data model rather than this tool's decisions.
     severity: str
     impact: str
     priority: str
-    confidence: str
+    confidence: Confidence
     digest: str
     affected_assets: list[AffectedAsset] = Field(default_factory=list)
     evidence_findings: list[EvidenceFinding] = Field(default_factory=list)

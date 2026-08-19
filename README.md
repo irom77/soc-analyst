@@ -151,6 +151,25 @@ including the spec ambiguity the first run exposed.
 The stderr lines are an echo, not the record: the same result is saved in the report
 under `case_analyzer_run.checks`, described next.
 
+### Read the verdict as a fixed vocabulary
+
+`verdict` and `confidence` are closed sets, enforced by the schema rather than suggested
+by the prompt:
+
+| Field | Allowed values |
+| --- | --- |
+| `verdict` | `True Positive`, `Suspicious`, `False Positive`, `Benign`, `Insufficient Data` |
+| `confidence` | `Low`, `Medium`, `High` |
+
+A response using any other wording fails validation and exits 6, the same as any other
+malformed response — no report is written. That is the point: an archived run can be
+grouped and compared without normalizing spellings first, which is what makes the
+provenance block below worth having.
+
+`severity`, `impact`, and `priority` are deliberately left as free strings. They restate
+the source platform's own vocabulary, and the recorded exports carry `critical`,
+`informational`, and lowercase spellings that are not this tool's to standardize.
+
 ### Know what produced a saved report
 
 Every result carries a `case_analyzer_run` block, generated locally and never by the

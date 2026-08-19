@@ -93,7 +93,31 @@ Any saved report becomes self-describing for audit purposes ("which model, with 
 prompt, said this about which exact input"). Purely additive: keep the field optional so
 existing recorded examples stay valid. Entirely testable offline.
 
-### 2. Enum-constrain the decision vocabulary
+### 2. Enum-constrain the decision vocabulary — DONE (2026-08-19)
+
+Implemented with the value sets signed off as proposed: `verdict` is
+`Literal["True Positive", "Suspicious", "False Positive", "Benign", "Insufficient Data"]`
+and `confidence` is `Literal["Low", "Medium", "High"]`, in the Title Case every recorded
+run and every eval case already used. `severity`, `impact`, and `priority` stay free
+strings for the reason the item anticipated, now with evidence: the recorded SOAR exports
+carry `critical`, `informational`, and lowercase spellings, so a closed set there would
+constrain the source platform's data model rather than this tool's decisions.
+
+An off-list value fails schema validation like any other malformed response —
+`LLMProviderError`, exit 6, no report — which is what makes the vocabulary a contract
+rather than a suggestion. The sanitized error names the field and not the rejected
+wording, matching the existing error contract.
+
+All seven previously recorded reports validate against the closed schema untouched,
+which is the evidence that this writes down existing behavior rather than imposing new
+behavior; a test asserts it and doubles as the regression guard for any future change to
+the sets. Another test asserts the prompt names exactly the enum values, since drift
+between them would make every run fail.
+
+Unlike items 1, 3, and 4, this one is provider-visible: it changes the JSON schema sent
+as `response_format`. The live run in [`examples/provenance/`](examples/provenance/README.md)
+confirms the configured provider accepts it and returns canonical values.
+
 
 Make `verdict` a `Literal["True Positive", "Suspicious", "False Positive", "Benign",
 "Insufficient Data"]` and constrain `confidence` (e.g. low/medium/high). Because the
@@ -255,16 +279,16 @@ changes the cost model.
 
 Start with Tier 1: items 1, 3, and 4 are pure additions; item 2 needs only the enum
 value decision. Item 8 deserves its own design pass against a real control set before
-any code.
+any code. (All of Tier 1 is now done; see the progress note below.)
 
 Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken first
 because they were the only Tier 1 items with no open review question; item 1 followed
 once review points 1 and 2 were decided, which is recorded under the item itself.
 
-What remains in Tier 1 is item 2, and it is blocked on a decision only the user can
-make: the final `verdict` and `confidence` value sets. Tier 2 item 5 is still blocked on
-review point 3 (whether pacing waits consume the enrichment budget), and item 6 on
-review point 4 (which IDNA standard applies).
+Tier 1 is complete. Tier 2 item 5 is blocked on review point 3 (whether pacing waits
+consume the enrichment budget) and item 6 on review point 4 (which IDNA standard
+applies); item 7 is sequenced after item 5. Tier 3 item 8 still needs its own design
+pass against a real control set.
 
 ## Review — to be verified before implementation
 

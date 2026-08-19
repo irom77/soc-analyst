@@ -12,12 +12,10 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
-from the 2026-08-18 limitations review. Its eval-harness prerequisite,
-prompt-injection item, and Tier 1 items 1, 3, and 4 are done (see "Completed" below);
-the remaining work — enum verdicts, enrichment caching and IDN handling, and the
-dedicated audit mode — is open there and not duplicated here. Two design questions in
-that plan's review section still gate part of it, and enum verdicts need a decision on
-the final value sets.
+from the 2026-08-18 limitations review. Its eval-harness prerequisite, prompt-injection
+item, and all of Tier 1 are done (see "Completed" below); the remaining work —
+enrichment caching and IDN handling, then the dedicated audit mode — is open there and
+not duplicated here. Two design questions in that plan's review section gate Tier 2.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
 `uv run ruff check src tests` (114 offline tests; no credentials or network needed).
@@ -46,6 +44,24 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
 
 ## Completed (2026-08-19 report self-description)
+
+- [x] Tier 1 item 2 — enum-constrained decision vocabulary. `verdict` and `confidence`
+  are now `Literal` types: the five verdicts and Low/Medium/High, in the Title Case
+  every recorded run and eval case already used. `severity`, `impact`, and `priority`
+  stay free strings — the recorded SOAR exports carry `critical`, `informational`, and
+  lowercase spellings, which belong to the source platform rather than to this tool.
+
+  An off-list value fails validation like any other malformed response (exit 6, no
+  report), which is what makes the vocabulary a contract; the sanitized error names the
+  field, never the rejected wording. All seven previously recorded reports validate
+  against the closed schema untouched, and a test asserts that, so it doubles as the
+  regression guard if the sets ever change. Another test asserts the prompt names exactly
+  the enum values, since drift between them would fail every run.
+
+  This is the only Tier 1 item that changes what the provider sees, so it was verified
+  live: [`examples/provenance/`](examples/provenance/README.md) records the run. The same
+  run re-confirmed the citation fix in the live path — 14 of 14 citations resolved, none
+  written with the `case.` prefix that the earlier run exposed.
 
 - [x] Tier 1 item 1 — report provenance. `analyze_case()` and `summarize_case()` now
   return `AnalyzedReport`/`AnalyzedSummary`: the model's own schema plus a
@@ -131,7 +147,7 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   plus an explicit `model_validate_json` replaces `with_structured_output`; the
   except-ladder is rebuilt on `litellm.exceptions`. `--explain` message construction is
   byte-identical to the pre-migration capture (377 lines diffed), and `--dry-run` output
-  is unchanged. 137 tests pass and `ruff check src tests` is clean.
+  is unchanged. 147 tests pass and `ruff check src tests` is clean.
 
   Two corrections to the plan, both found during execution:
 
