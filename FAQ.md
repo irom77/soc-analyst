@@ -23,6 +23,38 @@ For the most useful result, include:
 
 Always have an analyst verify the generated verdict before using it operationally.
 
+## Why does the model name decide which provider is called?
+
+Because the analyzer calls providers through the LiteLLM SDK, and LiteLLM reads
+`CASE_ANALYZER_MODEL` as a **routing key** rather than as an opaque string forwarded to
+`CASE_ANALYZER_BASE_URL`. That is what lets a provider with no OpenAI-compatible
+endpoint be reached without a gateway:
+
+    CASE_ANALYZER_MODEL=gemini/gemini-2.5-flash    # Google's native generateContent API
+
+To keep that from changing the meaning of names already in use, the analyzer treats
+only prefixes this project has verified as native — currently just `gemini/` — and
+sends everything else down the OpenAI-compatible path to the configured endpoint:
+
+| `CASE_ANALYZER_MODEL` | Route |
+| --- | --- |
+| `gemini-2.5-flash` | OpenAI-compatible, sent to `CASE_ANALYZER_BASE_URL` |
+| `gemini-native` (a LiteLLM proxy alias) | OpenAI-compatible |
+| `meta-llama/Llama-3` | OpenAI-compatible — a slash in an opaque model name is not a provider |
+| `gemini/gemini-2.5-flash` | Google's native API; no base URL needed |
+| `openai/<name>` | forces the compatible path |
+
+The last row is the escape hatch for a collision. Some OpenAI-compatible gateways use
+model IDs whose first segment happens to match a provider name — `anthropic/claude-3`,
+for example. Such a name is sent to the configured endpoint unchanged, since
+`anthropic/` is not on the verified list, but `openai/` is available if a future prefix
+ever collides: LiteLLM strips only the leading segment, so `openai/gemini/x` reaches
+the endpoint as `gemini/x`.
+
+Existing configurations do not need to be edited. Defaulting to the OpenAI-compatible
+route is deliberate — only a prefix that has been verified against a real provider run
+should divert traffic away from the endpoint you configured.
+
 ## Does the CLI make two LLM calls like the Case Analysis Worker?
 
 No. The standalone `case-analyzer` CLI makes one LLM call to generate the structured investigation report. Input normalization and loading an optional `--knowledge` JSON file happen locally and do not call the LLM.

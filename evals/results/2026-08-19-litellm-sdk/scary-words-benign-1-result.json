@@ -1,0 +1,107 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "Investigation confirms that the critical malware and ransomware alerts are false positives, triggered by a scheduled and approved detection-validation exercise (CHG-4821) conducted in an isolated BUILD-LAB environment. No actual compromise, data encryption, credential theft, or external command-and-control occurred. All observed activities were part of a controlled simulation.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "BUILD-LAB-03"
+    },
+    {
+      "asset_type": "Host",
+      "asset_value": "SIM-CONTROLLER-01"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Scheduled Detection Validation Exercise",
+      "finding_type": "Contextual",
+      "subject": "Case Context",
+      "evidence": "Case comments and artifact notes explicitly state this is 'the scheduled quarterly detection-validation exercise CHG-4821 in the isolated BUILD-LAB network' and 'Execution was initiated by service account svc_detection_test under approved change CHG-4821.'",
+      "conclusion": "The observed activities are part of an authorized and planned simulation."
+    },
+    {
+      "title": "Isolated Environment and Network Containment",
+      "finding_type": "Technical",
+      "subject": "Network Isolation",
+      "evidence": "CMDB identifies involved hosts as 'isolated cyber-range assets with no route to production.' Firewall logs confirm 'the isolated range blocked all external egress during the exercise.'",
+      "conclusion": "The simulated activities were contained within a non-production environment, preventing any real-world impact."
+    },
+    {
+      "title": "Non-Destructive Simulation Outcome",
+      "finding_type": "Technical",
+      "subject": "Simulated Attack Behavior",
+      "evidence": "The process 'attack-simulator.exe' ran with '--scenario ransomware-safe --no-encryption'. EDR recorded 'simulation markers only: no file encryption, credential access, persistence, or payload download occurred.'",
+      "conclusion": "The simulated attack was non-destructive and did not achieve actual malicious objectives or cause harm."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access (Simulated)",
+      "description": "An approved service account, svc_detection_test, initiated the attack-simulator.exe on BUILD-LAB-03."
+    },
+    {
+      "attack_stage": "Execution (Simulated)",
+      "description": "The attack-simulator.exe process ran with parameters indicating a ransomware-safe scenario, without actual encryption."
+    },
+    {
+      "attack_stage": "Command and Control (Simulated)",
+      "description": "Internal network traffic from 10.250.0.23 (BUILD-LAB-03) to SIM-CONTROLLER-01 (10.250.0.10) on port 8443 was observed, simulating C2 beaconing within the isolated lab."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Initial detection of simulated activity, leading to case creation.",
+      "evidence_field": "case.created_at"
+    },
+    {
+      "timestamp": "2026-08-15T13:04:00Z",
+      "attack_behavior": "Analyst comment confirming the activity as a scheduled detection-validation exercise.",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Process Name",
+      "value": "attack-simulator.exe",
+      "context": "Executed on BUILD-LAB-03 as part of a simulation."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "10.250.0.10",
+      "context": "Internal exercise controller (SIM-CONTROLLER-01) for simulated C2."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "10.250.0.23",
+      "context": "Source of simulated C2 traffic from BUILD-LAB-03."
+    },
+    {
+      "indicator_type": "Port",
+      "value": "8443",
+      "context": "Destination port for simulated C2 traffic to the exercise controller."
+    },
+    {
+      "indicator_type": "Username",
+      "value": "svc_detection_test",
+      "context": "Service account used to initiate the simulation on BUILD-LAB-03."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Close Case",
+      "description": "Close the case as a Benign event, as it was an authorized and contained simulation.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Review Alert Tuning",
+      "description": "Evaluate if alert logic can be refined to incorporate approved change requests or known simulation activities to reduce future false positives.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": []
+}

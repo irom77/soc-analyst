@@ -1,0 +1,122 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "None",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "This case, initially flagged as a critical ransomware attack, has been identified as a scheduled and approved detection validation exercise (CHG-4821) conducted in an isolated cyber-range. No actual malicious activity, data compromise, or impact to production systems occurred.",
+  "affected_assets": [
+    {
+      "asset_type": "host",
+      "asset_value": "BUILD-LAB-03"
+    },
+    {
+      "asset_type": "host",
+      "asset_value": "SIM-CONTROLLER-01"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Approved Simulation Activity",
+      "finding_type": "Operational",
+      "subject": "Detection Validation Exercise",
+      "evidence": "Case comments and artifact notes explicitly state this is a scheduled quarterly detection-validation exercise (CHG-4821) approved by the SOC lead, occurring within the isolated BUILD-LAB network.",
+      "conclusion": "The reported activity is an authorized and planned simulation."
+    },
+    {
+      "title": "Isolated Environment",
+      "finding_type": "Environmental",
+      "subject": "Network Isolation",
+      "evidence": "CMDB identifies `BUILD-LAB-03` and `SIM-CONTROLLER-01` as isolated cyber-range assets with no route to production. Firewall logs confirm all external egress was blocked during the exercise.",
+      "conclusion": "The simulated activity was contained within an isolated lab environment, posing no risk to production systems."
+    },
+    {
+      "title": "Simulated Malware Execution",
+      "finding_type": "Technical",
+      "subject": "Process Execution",
+      "evidence": "The process `attack-simulator.exe` was executed on `BUILD-LAB-03` by `svc_detection_test` with the command line `--scenario ransomware-safe --no-encryption`. EDR recorded only simulation markers, confirming no actual file encryption, credential access, persistence, or payload download occurred.",
+      "conclusion": "The reported malware execution was a controlled simulation, not an actual compromise."
+    },
+    {
+      "title": "Benign C2 Traffic",
+      "finding_type": "Technical",
+      "subject": "Network Communication",
+      "evidence": "Simulated C2 beacon traffic was observed from `10.250.0.23` to the internal exercise controller `10.250.0.10` on port 8443, confirming it was contained within the isolated lab.",
+      "conclusion": "The C2 beacon traffic was part of the simulation and did not involve external malicious infrastructure."
+    },
+    {
+      "title": "Validated Simulation Tool",
+      "finding_type": "Technical",
+      "subject": "Binary Integrity",
+      "evidence": "The binary hash of `attack-simulator.exe` matches the internally signed validation tool inventory.",
+      "conclusion": "The executable used for the simulation is a known and approved tool."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Execution",
+      "description": "The `attack-simulator.exe` was executed on `BUILD-LAB-03` by the `svc_detection_test` account as part of the approved exercise."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "Simulated C2 beacon traffic was observed from `10.250.0.23` to the internal exercise controller `SIM-CONTROLLER-01` (`10.250.0.10`)."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T13:00:00Z",
+      "attack_behavior": "Case created, marking the start of the approved simulation window.",
+      "evidence_field": "case.created_at"
+    },
+    {
+      "timestamp": "2026-08-15T13:04:00Z",
+      "attack_behavior": "Analyst `analyst_mrivera` added a comment confirming the activity as a scheduled detection-validation exercise (CHG-4821).",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "process_name",
+      "value": "attack-simulator.exe",
+      "context": "Simulated malware execution"
+    },
+    {
+      "indicator_type": "command_line",
+      "value": "attack-simulator.exe --scenario ransomware-safe --no-encryption",
+      "context": "Specific simulation scenario parameters"
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "10.250.0.10",
+      "context": "Internal exercise controller"
+    },
+    {
+      "indicator_type": "ip_address",
+      "value": "10.250.0.23",
+      "context": "Simulated source of C2 traffic"
+    },
+    {
+      "indicator_type": "username",
+      "value": "svc_detection_test",
+      "context": "Service account used for simulation"
+    },
+    {
+      "indicator_type": "change_id",
+      "value": "CHG-4821",
+      "context": "Approved change request for the exercise"
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Close Case",
+      "description": "Close the case as a benign, approved activity, as no actual threat or compromise occurred.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Document Activity",
+      "description": "Document the successful detection and validation of the exercise, noting the findings for future reference.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": []
+}

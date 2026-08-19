@@ -73,55 +73,43 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `litellm` leaves a direct dependency undeclared — and LiteLLM pins
   `openai>=2.20.0,<3.0.0`, downgrading the installed 3.1.0 to 2.54.0.
 
-- [ ] Execute that plan: replace `langchain-openai` with `litellm`, build messages as
-  dicts, swap `with_structured_output` for `response_format` plus an explicit
-  `model_validate_json`, rewrite the except-ladder against `litellm.exceptions`
-  (`Timeout` replaces `APITimeoutError`; `APIStatusError` splits into `NotFoundError`
-  and `BadRequestError`), and update `tests/test_analyzer.py` — four `patch(...)` sites
-  plus nine `.content` assertions that become dictionary access. Do **not** set
-  `litellm.enable_json_schema_validation`: Pydantic stays the sole validator, since
-  LiteLLM's `JSONSchemaValidationError` embeds raw model output that survives on
-  `__cause__`, and the module-global would change behavior for library callers.
-  Also correct the "OpenAI-compatible endpoint" `--base-url` help in `cli.py:48` and
-  `explain_cli.py:20`. Scope is Gemini only; `litellm-config.yaml` and
-  `examples/litellm-proxy/` stay as a documented alternative for centralized-key or
-  shared deployments.
+- [x] Execute that plan. `langchain-openai` is gone; messages are dicts; `response_format`
+  plus an explicit `model_validate_json` replaces `with_structured_output`; the
+  except-ladder is rebuilt on `litellm.exceptions`. `--explain` message construction is
+  byte-identical to the pre-migration capture (377 lines diffed), and `--dry-run` output
+  is unchanged. 96 tests pass and `ruff check src tests` is clean.
 
-- [ ] Preserve bare model names across the SDK migration. LiteLLM treats
-  `CASE_ANALYZER_MODEL` as a **routing key**, not the opaque string `ChatOpenAI`
-  forwards to `base_url`, and `api_base` never influences the choice. Probed offline
-  with `litellm.get_llm_provider`: `gemini-2.5-flash` — the live `.env` value —
-  resolves to `vertex_ai`, so it is silently misrouted rather than failing loudly;
-  `gemini-native` (the proxy alias) and `test-model` (`tests/test_analyzer.py:20`)
-  raise `BadRequestError: LLM Provider NOT provided`; only names in LiteLLM's OpenAI
-  map, such as `gpt-4o`, keep working. Slash-containing opaque identifiers break too:
-  `meta-llama/Llama-3` and `Qwen/Qwen2.5-72B` raise `BadRequestError`, and an
-  OpenRouter-style `anthropic/claude-3` is silently misrouted to Anthropic. Fix in
-  `_request_structured`: route on a maintained allowlist of verified native prefixes —
-  currently `("gemini/",)` — and default everything else to `custom_llm_provider="openai"`,
-  which preserves the model string exactly and leaves `openai/…` working as an escape
-  hatch. Assert the rule at the application boundary by patching `litellm.completion`
-  (legacy bare name gets the override, `gemini/…` does not, `meta-llama/Llama-3` gets it
-  with the string unmodified), keeping `get_llm_provider` checks as LiteLLM-side
-  canaries; the existing suite mocks `ChatOpenAI` and cannot catch a misroute. Document the prefix in `FAQ.md` **with this change**, not before: until it
-  lands, bare names work and the entry would be wrong. See
-  [`litellm-sdk-plan-2026-08-19.md`](litellm-sdk-plan-2026-08-19.md) finding 5.
+  Two corrections to the plan, both found during execution:
 
-- [ ] Add an offline regression test for the timeout forwarding contract. Enter through
-  the application boundary — `_request_structured`, not `litellm.completion` — because
-  exit 5 is produced by our translation layer, and entering there also exercises the new
-  `except Timeout` handler. Point it at a local `ThreadingHTTPServer` (with
-  `daemon_threads = True`, or teardown blocks on the sleeping handler) and assert
-  `LLMProviderError.exit_code == 5`. Probed: raised after 1.22s, teardown 0.49s,
-  loopback only, no credentials. This checks that the configured timeout reaches the
-  provider call under the name the client actually reads and that the failure is
-  translated to the documented exit code — it does not attempt to prove the client's
-  timeout implementation.
-  `tests/test_analyzer.py:130` asserts on a `Mock`, which records any keyword whether
-  or not the real callable accepts it, so a renamed parameter passes the suite while
-  silently disabling the timeout. `ChatLiteLLM` is exactly that hazard: it has no
-  `timeout` field (it is `request_timeout`) and accepts `timeout=` silently, undoing
-  M-8 without an error.
+  - `litellm.exceptions.APIError` is a **sibling** of everything LiteLLM raises, not an
+    ancestor — LiteLLM subclasses `openai`'s types directly, so
+    `issubclass(litellm.InternalServerError, litellm.APIError)` is `False`. The planned
+    catch-all was dead code and an unreachable endpoint escaped as an unhandled
+    traceback (exit 1), leaking the raw provider message past the sanitized contract.
+    `openai.OpenAIError` is the only working catch-all, so `openai` is now a **declared**
+    direct dependency pinned to LiteLLM's own range — which answers the undeclared-import
+    concern that motivated dropping it, without pretending the base class exists in
+    LiteLLM.
+  - LiteLLM reports a refused connection as a synthetic `InternalServerError` (status
+    500) and drops the original exception, so it cannot be distinguished from a genuine
+    provider outage. `InternalServerError`, `ServiceUnavailableError` and
+    `BadGatewayError` map to exit 5 — the documented code for connection failures —
+    under a message covering either cause. The unreachable-endpoint *message* therefore
+    changed; the exit code did not.
+
+- [x] Keep bare and opaque model names on the OpenAI-compatible route. `_NATIVE_PREFIXES`
+  in `analyzer.py` is the allowlist, currently `("gemini/",)`; everything else gets
+  `custom_llm_provider="openai"`. Asserted at the application boundary and with
+  `get_llm_provider` canaries.
+
+- [x] Add the offline timeout regression test. Enters through `_request_structured`
+  against a loopback `ThreadingHTTPServer`, asserts `exit_code == 5`; `daemon_threads`
+  keeps teardown under a second.
+
+- [x] Verify live against the native API. `CASE_ANALYZER_MODEL=gemini/gemini-2.5-flash`
+  with no base URL produced a valid `InvestigationReport`, recorded in
+  [`examples/litellm-sdk/`](examples/litellm-sdk/README.md) alongside a comparison with
+  the proxy run: same verdict, severity, confidence, evidence and remediation counts.
 
 ## Completed (2026-08-18 injection hardening)
 

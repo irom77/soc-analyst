@@ -92,6 +92,17 @@ The admin dashboard at `/ui` additionally requires a Postgres `DATABASE_URL`. Wi
 one, the page renders but `POST /login` fails with `Not connected to DB!`, so a master
 key alone is not sufficient.
 
+## Since this run
+
+The analyzer has since moved from LangChain to the LiteLLM **SDK**, so structured
+output is now requested with `response_format=` and validated by Pydantic rather than
+`with_structured_output()`. The table above is left as recorded. The proxy route still
+works unchanged — a proxy alias such as `gemini-native` is a bare name, which the
+analyzer keeps on the OpenAI-compatible path — and remains the better answer for
+centralized keys, budgets, or a shared deployment. Reaching Google's native API no
+longer requires the proxy: `CASE_ANALYZER_MODEL=gemini/gemini-2.5-flash` does it
+in process.
+
 ## Caveat
 
 Structured output was verified for Gemini's native API only. LiteLLM translates

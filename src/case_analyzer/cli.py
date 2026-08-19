@@ -45,7 +45,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--knowledge", type=Path, help="Optional JSON array of knowledge records")
     parser.add_argument("--user-input", default="", help="Additional analyst guidance")
     parser.add_argument("--model", help="Model name (or set CASE_ANALYZER_MODEL)")
-    parser.add_argument("--base-url", help="OpenAI-compatible endpoint (or set CASE_ANALYZER_BASE_URL)")
+    parser.add_argument(
+        "--base-url",
+        help="Provider endpoint, OpenAI-compatible unless the model carries a native "
+        "prefix (or set CASE_ANALYZER_BASE_URL)",
+    )
     parser.add_argument("--api-key", help="Provider key (prefer CASE_ANALYZER_API_KEY)")
     parser.add_argument("--dry-run", action="store_true", help="Normalize and print input without calling an LLM")
     parser.add_argument(
@@ -148,7 +152,7 @@ def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = Fal
     build_messages = build_summary_messages if summary else build_analysis_messages
     messages = build_messages(case, knowledge_records=knowledge, user_input=user_input)
     print("SystemMessage:")
-    print(messages[0].content)
+    print(messages[0]["content"])
     print("\nHumanMessage (JSON payload, sent between untrusted-data markers):")
     _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 

@@ -224,31 +224,53 @@ The CLI automatically loads `.env` from the working directory. `.env` is ignored
 
 ### Use a model without an OpenAI-compatible endpoint
 
-Because the analyzer always speaks the OpenAI API format, a provider that offers no
-OpenAI-compatible endpoint can be reached by putting a translating gateway in front of
-it. [`litellm-config.yaml`](litellm-config.yaml) configures a
-[LiteLLM](https://docs.litellm.ai/) proxy for exactly that, and
-[`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md) records a
-verified run against Google's native `generateContent` API — including the two
-load-bearing version pins the install needs, and a recorded
-[`InvestigationReport`](examples/litellm-proxy/splunk-soar-analysis-via-litellm-proxy.json).
+The analyzer calls providers through the [LiteLLM](https://docs.litellm.ai/) SDK, so a
+provider with no OpenAI-compatible endpoint is reached by prefixing the model name —
+no gateway required:
 
-No application code changes are required; only the three `CASE_ANALYZER_*` values
-change, and `.env.example` carries them as commented entries.
+```bash
+CASE_ANALYZER_MODEL=gemini/gemini-2.5-flash   # Google's native generateContent API
+```
+
+The model name selects the transport, because LiteLLM reads it as a routing key:
+
+| `CASE_ANALYZER_MODEL` | Route |
+| --- | --- |
+| `gemini-2.5-flash` | OpenAI-compatible, sent to `CASE_ANALYZER_BASE_URL` |
+| `meta-llama/Llama-3` | OpenAI-compatible — a slash in an opaque model name is not a provider |
+| `gemini/gemini-2.5-flash` | Google's native API; `CASE_ANALYZER_BASE_URL` is not needed |
+| `openai/<name>` | escape hatch if an endpoint's own model name collides with a native prefix |
+
+Only prefixes this project has verified are treated as native, currently just
+`gemini/`. Everything else keeps its existing behaviour and reaches the configured
+endpoint unchanged, so no existing configuration needs to be edited.
+
+A [LiteLLM proxy](examples/litellm-proxy/README.md) remains supported as an
+alternative, and is still the better answer for centralized keys, budgets, or a shared
+multi-user deployment. [`litellm-config.yaml`](litellm-config.yaml) configures one, and
+[`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md) records a
+verified run including a recorded
+[`InvestigationReport`](examples/litellm-proxy/splunk-soar-analysis-via-litellm-proxy.json).
 
 ### Model and gateway limits
 
-The analyzer uses `ChatOpenAI` to send requests in the OpenAI API format. The
-configured `CASE_ANALYZER_BASE_URL` identifies the service that receives the request;
-it might be a model provider's compatibility endpoint, a third-party router, or an
-internal gateway. A request can therefore follow this path:
+The analyzer sends requests through LiteLLM. For a bare or opaque model name it speaks
+the OpenAI API format to `CASE_ANALYZER_BASE_URL`, which might be a model provider's
+compatibility endpoint, a third-party router, or an internal gateway:
 
 ```text
 case-analyzer -> OpenAI-compatible gateway -> selected model
 ```
 
-A translating proxy adds one hop, which is how a non-OpenAI-compatible provider is
-reached (see [`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md)):
+A native prefix removes the compatibility layer entirely — LiteLLM translates in
+process and calls the provider's own API:
+
+```text
+case-analyzer -> provider's native API -> selected model
+```
+
+A LiteLLM proxy instead adds one hop, and does the same translation out of process
+(see [`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md)):
 
 ```text
 case-analyzer -> LiteLLM proxy -> provider's native API -> selected model

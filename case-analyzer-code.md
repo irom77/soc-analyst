@@ -53,7 +53,7 @@ The modules have separate responsibilities:
 | `cli.py` | Parse arguments, read and write files, select dry-run or invocation | Filesystem and command-line options |
 | `adapters.py` | Translate source JSON into one canonical representation | Common generic and SOAR export fields |
 | `schemas.py` | Define and validate input and output structures | Pydantic field requirements |
-| `analyzer.py` | Build messages, configure the model, invoke it, and return a report | LangChain and OpenAI-compatible providers |
+| `analyzer.py` | Build messages, configure the model, invoke it, and return a report | LiteLLM, and OpenAI-compatible or native providers |
 | `prompts/investigation.md` | Tell the model how to reason about evidence | SOC investigation rules |
 | `prompts/summary.md` | Tell the model to describe the case without judging it, for `--summary` | What belongs in a case digest |
 
@@ -173,10 +173,10 @@ The canonical structure prevents prompt-building logic from depending on source-
 
 `user_input` is omitted when it is empty. `knowledge.records` is always present, even when no knowledge was supplied. This gives the prompt a predictable structure.
 
-`build_analysis_messages()` then creates two LangChain messages:
+`build_analysis_messages()` then creates two chat messages:
 
-1. `SystemMessage` contains the packaged `investigation.md` instructions.
-2. `HumanMessage` contains the payload serialized as JSON.
+1. The `system` message contains the packaged `investigation.md` instructions.
+2. The `user` message contains the payload serialized as JSON.
 
 The prompt is loaded with `importlib.resources`, so it continues to work after the package is installed as a wheel. It instructs the model to use evidence only, separate facts from inference, deduplicate alerts, list uncertainties, and avoid inventing content merely to fill the schema.
 
@@ -184,8 +184,9 @@ The prompt is loaded with `importlib.resources`, so it continues to work after t
 
 #### Message construction and analyst guidance
 
-`SystemMessage` and `HumanMessage` are LangChain representations of the system and
-user roles accepted by chat-model APIs. They have distinct responsibilities:
+`SystemMessage` and `HumanMessage` below name the `system` and `user` roles accepted
+by chat-model APIs; the messages themselves are plain dictionaries, and `--explain`
+prints them under these labels. They have distinct responsibilities:
 
 | Input | Source | Purpose | How to update it |
 | --- | --- | --- | --- |
@@ -250,14 +251,25 @@ sent to the model, although the actual message is serialized as compact JSON.
 
 The model name and the API key are both mandatory; each is checked before any request is sent, so a missing one is reported as an input/configuration error rather than an opaque provider failure. The endpoint is optional for the default OpenAI endpoint. In normal use, credentials should be supplied through environment variables instead of command history.
 
-The function constructs `ChatOpenAI` with temperature zero and then calls:
+The model name also selects the transport. LiteLLM reads it as a routing key, so the analyzer keeps every name on the OpenAI-compatible path unless it begins with a prefix this project has verified as native — currently only `gemini/`:
+
+| `CASE_ANALYZER_MODEL` | Route |
+| --- | --- |
+| `gemini-2.5-flash` | OpenAI-compatible, sent to `CASE_ANALYZER_BASE_URL` |
+| `meta-llama/Llama-3` | OpenAI-compatible; a slash in an opaque model name is not a provider |
+| `gemini/gemini-2.5-flash` | Google's native `generateContent` API |
+| `openai/<name>` | escape hatch if an endpoint's own model name collides with a native prefix |
+
+Defaulting to the OpenAI-compatible route is deliberate: only a verified prefix should divert traffic away from the configured endpoint.
+
+The function then calls, with temperature zero:
 
 ```python
-structured_llm = llm.with_structured_output(InvestigationReport)
-report = structured_llm.invoke(messages)
+resp = litellm.completion(..., response_format=InvestigationReport)
+report = InvestigationReport.model_validate_json(resp.choices[0].message.content)
 ```
 
-LangChain supplies the `InvestigationReport` structure to the compatible model and converts the response into the Pydantic model. This is more reliable than asking for arbitrary JSON and manually interpreting it afterward.
+`response_format` supplies the `InvestigationReport` structure to the model, and Pydantic is the sole validator of what comes back. This is more reliable than asking for arbitrary JSON and manually interpreting it afterward. LiteLLM's own `enable_json_schema_validation` is deliberately left off: its failure carries the raw model response, which would survive on the exception chain and defeat the sanitized error contract.
 
 ### Step 6: validate and write the report
 

@@ -436,6 +436,53 @@ else; locally generated provenance must stay outside the schema passed as
 `response_format`, per `improvement-plan-2026-08-18.md:201`; and the full eval rerun is
 justified because a changed transport adapter can move results even with identical text.
 
+## Execution notes (2026-08-19)
+
+The plan was implemented as written except for two points it got wrong, both found by
+running the failure injections rather than by review.
+
+### The planned catch-all was dead code
+
+Finding 3's mapping table ends with `OpenAIError` → `litellm.exceptions.APIError`, on
+the stated grounds that "all required names exist" in LiteLLM. The name exists; the
+class is not an ancestor. LiteLLM subclasses `openai`'s exception types directly, so
+its own `APIError` is a *sibling* of everything it raises:
+
+    issubclass(litellm.exceptions.InternalServerError, litellm.exceptions.APIError)
+    False
+    issubclass(litellm.exceptions.InternalServerError, openai.APIError)
+    True
+
+The consequence was not cosmetic. An unreachable endpoint escaped the ladder entirely
+and surfaced as an unhandled traceback with exit 1, printing the raw provider message —
+precisely the leak the sanitized contract exists to prevent, and the same class of
+failure finding 1 was concerned with.
+
+`openai.OpenAIError` is the only working catch-all, so `openai` is now a **declared**
+direct dependency, pinned to LiteLLM's own `>=2.20.0,<3.0.0`. That satisfies finding
+3's actual concern — an undeclared import — while dropping its incorrect premise. The
+specific mapped classes are still LiteLLM's; only the final catch-all comes from
+`openai`.
+
+`tests/test_analyzer.py::ProviderErrorTranslationTests` now asserts every documented
+exit code and, separately, that an *unmapped* provider exception still reaches
+`LLMProviderError` without echoing its message, so a dead catch-all cannot recur
+silently.
+
+### A refused connection is reported as a 500
+
+LiteLLM converts a connection refusal into a synthetic `InternalServerError` with
+`status_code` 500 and no `__cause__`; the only distinguishing signal is the string
+`"Connection error."` in the message. It therefore cannot be told apart from a genuine
+provider outage by type.
+
+`InternalServerError`, `ServiceUnavailableError` and `BadGatewayError` map to exit 5 —
+the documented code for connection failures — under a message that covers either cause.
+This keeps the exit-code contract in `case-analyzer-code.md:313` intact and preserves
+the coherent split: **5 means no answer was obtained** (timeout, connection, provider
+unavailable), **6 means an answer arrived and was unusable** (4xx, schema mismatch). The
+message for an unreachable endpoint changed; the exit code did not.
+
 ## Decisions (settled 2026-08-19)
 
 - **Scope is Gemini only.** No Anthropic, Bedrock, or Vertex verification is required

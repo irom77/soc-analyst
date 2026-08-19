@@ -1,0 +1,139 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "Critical",
+  "confidence": "High",
+  "digest": "A multi-stage incident involving phishing delivery, encoded PowerShell script execution, and Cobalt Strike C2 beaconing from workstation WS-FIN-09. Evidence includes endpoint process execution, network beaconing, and threat intelligence corroboration.",
+  "affected_assets": [
+    {
+      "asset_type": "Host",
+      "asset_value": "WS-FIN-09"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.20.4.115"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Initial Execution via Malicious Document",
+      "finding_type": "Endpoint Activity",
+      "subject": "WS-FIN-09",
+      "evidence": "Process logs show 'excel.exe' spawning 'powershell.exe' on host 'WS-FIN-09' (10.20.4.115).",
+      "conclusion": "Execution of a malicious document led to the initial compromise of the workstation."
+    },
+    {
+      "title": "Encoded PowerShell Command Execution",
+      "finding_type": "Endpoint Activity",
+      "subject": "powershell.exe",
+      "evidence": "The 'powershell.exe' process executed with '-NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>'. Deobfuscation revealed an attempt to download a payload from a remote domain.",
+      "conclusion": "An encoded PowerShell command was used to download and execute a secondary payload, indicating defense evasion."
+    },
+    {
+      "title": "Command and Control Beaconing Detected",
+      "finding_type": "Network Activity",
+      "subject": "10.20.4.115 to 198.51.100.44",
+      "evidence": "Firewall logs show persistent outbound TLS session from '10.20.4.115' (WS-FIN-09) to '198.51.100.44' on port 443, with periodic 30-second interval pulses.",
+      "conclusion": "WS-FIN-09 established a persistent C2 communication channel."
+    },
+    {
+      "title": "Malicious C2 Infrastructure Identified",
+      "finding_type": "Threat Intelligence",
+      "subject": "stage2.malicious-domain.xyz",
+      "evidence": "The domain 'stage2.malicious-domain.xyz' (198.51.100.44) is identified as malicious, resolved via Fast Flux DNS, has a high malicious reputation score (89/100), and matches a US-CERT advisory bulletin.",
+      "conclusion": "The observed network communication is directed towards known malicious command and control infrastructure."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "Phishing email delivery led to a user opening a malicious attachment on WS-FIN-09."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "A malicious Excel document executed an encoded PowerShell command on the endpoint."
+    },
+    {
+      "attack_stage": "Defense Evasion",
+      "description": "The PowerShell command used '-EncodedCommand' and '-W Hidden' to obfuscate its true intent and evade detection."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The PowerShell script downloaded and executed a payload, establishing a persistent TLS C2 beacon to 'stage2.malicious-domain.xyz'."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:15:02.000Z",
+      "attack_behavior": "Suspicious process execution (excel.exe spawning powershell.exe) detected on WS-FIN-09.",
+      "evidence_field": "child_containers[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:16:30.000Z",
+      "attack_behavior": "Outbound beacon traffic to an untrusted subnet detected from WS-FIN-09.",
+      "evidence_field": "child_containers[1].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:22:10.452819Z",
+      "attack_behavior": "Parent incident case (CASE-2026-0814-01) created.",
+      "evidence_field": "case.created_at"
+    },
+    {
+      "timestamp": "2026-08-14T18:25:30.000Z",
+      "attack_behavior": "Host WS-FIN-09 network isolation approved by SOC Lead.",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "Domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "C2 beacon destination, identified as malicious via TI and US-CERT advisory."
+    },
+    {
+      "indicator_type": "IP Address",
+      "value": "198.51.100.44",
+      "context": "C2 beacon destination IP, associated with malicious domain."
+    },
+    {
+      "indicator_type": "Command Line",
+      "value": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+      "context": "Malicious encoded PowerShell execution on endpoint WS-FIN-09."
+    },
+    {
+      "indicator_type": "Port",
+      "value": "443",
+      "context": "C2 communication port over TLS."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Network Containment",
+      "description": "Isolate host WS-FIN-09 from the network to prevent further C2 communication and lateral movement.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Blocking",
+      "description": "Block 'stage2.malicious-domain.xyz' and '198.51.100.44' at network perimeter firewalls and DNS resolvers.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Forensics",
+      "description": "Conduct a full forensic analysis of WS-FIN-09 to identify initial infection vector, persistence mechanisms, and extent of compromise.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Threat Hunting",
+      "description": "Search for similar encoded PowerShell executions or C2 beaconing activity across the environment to identify other potentially compromised systems.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The specific content or filename of the initial phishing attachment.",
+    "The identity of the user who opened the malicious attachment.",
+    "The exact payload delivered by the C2 server and its full capabilities.",
+    "Whether the C2 activity led to further compromise or data exfiltration.",
+    "The full scope and objectives of the APT activity mentioned in the case tags."
+  ]
+}

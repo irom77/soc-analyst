@@ -3,17 +3,27 @@ import os
 from importlib.resources import files
 from typing import Any
 
+import litellm
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from openai import (
+from litellm.exceptions import (
     APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
     AuthenticationError,
-    OpenAIError,
+    BadGatewayError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
     RateLimitError,
+    ServiceUnavailableError,
+    Timeout,
+    UnprocessableEntityError,
 )
+
+# LiteLLM's own exception classes subclass `openai`'s rather than a shared LiteLLM base,
+# so `litellm.exceptions.APIError` is a sibling of everything LiteLLM raises and catches
+# none of it. `openai.OpenAIError` is the only real common ancestor, which is why
+# `openai` is declared as a direct dependency instead of being used implicitly.
+from openai import OpenAIError
 from pydantic import BaseModel, ValidationError
 
 from .schemas import CanonicalCase, CaseSummary, InvestigationReport
@@ -78,8 +88,8 @@ def build_analysis_messages(
 ) -> list:
     payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
     return [
-        SystemMessage(content=_system_prompt()),
-        HumanMessage(content=render_payload_message(payload)),
+        {"role": "system", "content": _system_prompt()},
+        {"role": "user", "content": render_payload_message(payload)},
     ]
 
 
@@ -92,8 +102,8 @@ def build_summary_messages(
     """Same case payload as the analysis request, asked for as a narrative summary."""
     payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
     return [
-        SystemMessage(content=_summary_prompt()),
-        HumanMessage(content=render_payload_message(payload)),
+        {"role": "system", "content": _summary_prompt()},
+        {"role": "user", "content": render_payload_message(payload)},
     ]
 
 
@@ -104,6 +114,24 @@ def _validation_summary(exc: ValidationError, limit: int = 3) -> str:
         for error in exc.errors()[:limit]
     ]
     return "; ".join(parts) or "no field detail available"
+
+
+# Providers reachable through their native API. LiteLLM treats the model string as a
+# routing key, so anything not listed here is sent down the OpenAI-compatible path and
+# reaches `api_base` unmodified — including opaque identifiers that contain a slash,
+# such as `meta-llama/Llama-3`. Extend deliberately, one verified provider at a time.
+_NATIVE_PREFIXES = ("gemini/",)
+
+
+def _provider_kwargs(model: str) -> dict[str, str]:
+    """Keep non-native model names on the OpenAI-compatible route.
+
+    `openai/...` is the escape hatch when an endpoint's own model name collides with a
+    native prefix; LiteLLM strips only the leading segment.
+    """
+    if model.startswith(_NATIVE_PREFIXES):
+        return {}
+    return {"custom_llm_provider": "openai"}
 
 
 def _request_structured(
@@ -125,16 +153,18 @@ def _request_structured(
     if not selected_key:
         raise ValueError("Set CASE_ANALYZER_API_KEY or pass --api-key.")
     try:
-        llm = ChatOpenAI(
+        resp = litellm.completion(
             model=selected_model,
-            base_url=base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+            api_base=base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
             api_key=selected_key,
+            messages=messages,
             temperature=0,
-            max_retries=0,
+            num_retries=0,
             timeout=timeout,
+            response_format=schema,
+            **_provider_kwargs(selected_model),
         )
-        structured_llm = llm.with_structured_output(schema)
-        return structured_llm.invoke(messages)
+        return schema.model_validate_json(resp.choices[0].message.content)
     except ValidationError as exc:
         raise LLMProviderError(
             f"The model response did not match the {schema.__name__} schema: {_validation_summary(exc)}.",
@@ -146,11 +176,19 @@ def _request_structured(
         raise LLMProviderError(
             "LLM rate limit or quota was exceeded; retry later or check provider limits.", 4
         ) from exc
-    except APITimeoutError as exc:
+    # `Timeout` subclasses `APIConnectionError`, so it must be caught first.
+    except Timeout as exc:
         raise LLMProviderError("LLM request timed out; check the endpoint and try again.", 5) from exc
     except APIConnectionError as exc:
         raise LLMProviderError("Could not connect to the LLM endpoint; check the URL and network.", 5) from exc
-    except APIStatusError as exc:
+    # LiteLLM reports an unreachable endpoint as a synthetic 500 rather than a connection
+    # error, and drops the original exception, so this class cannot be told apart from a
+    # genuine provider outage. Both mean no answer was obtained, which is exit 5.
+    except (InternalServerError, ServiceUnavailableError, BadGatewayError) as exc:
+        raise LLMProviderError(
+            "Could not get a response from the LLM endpoint; check the URL, network, and provider status.", 5
+        ) from exc
+    except (NotFoundError, BadRequestError, PermissionDeniedError, UnprocessableEntityError) as exc:
         raise LLMProviderError(f"LLM provider returned HTTP {exc.status_code}.", 6) from exc
     except OpenAIError as exc:
         raise LLMProviderError(f"LLM request failed ({type(exc).__name__}).", 6) from exc
