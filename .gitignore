@@ -13,3 +13,4 @@ examples/unknown.json
 # Transient eval benchmark output; recorded runs are committed under evals/results/
 eval-results*/
 eval-results*.log
+.env.backup-*

@@ -1,0 +1,143 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "High",
+  "digest": "A workstation (WS-FIN-09) in the finance subnet was compromised via a phishing attachment, leading to the execution of an encoded PowerShell script that established a Cobalt Strike command and control (C2) beacon to a known malicious domain and IP address.",
+  "affected_assets": [
+    {
+      "asset_type": "host_name",
+      "asset_value": "WS-FIN-09"
+    },
+    {
+      "asset_type": "ip",
+      "asset_value": "10.20.4.115"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Initial Access via Phishing Attachment",
+      "finding_type": "observed_behavior",
+      "subject": "WS-FIN-09",
+      "evidence": "An alert for 'Suspicious Execution via Phishing Attachment' was triggered, showing 'excel.exe' spawning 'powershell.exe' on WS-FIN-09.",
+      "conclusion": "The initial compromise occurred through a user opening a malicious attachment, likely delivered via phishing."
+    },
+    {
+      "title": "Encoded PowerShell Execution",
+      "finding_type": "observed_behavior",
+      "subject": "powershell.exe",
+      "evidence": "The process 'powershell.exe' was executed with the command line 'powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>'. Analysis of the decoded payload indicated an attempt to download from a remote domain using 'IEX Net.WebClient'.",
+      "conclusion": "A malicious, encoded PowerShell script was executed to evade detection and download a secondary payload."
+    },
+    {
+      "title": "Command and Control Beaconing",
+      "finding_type": "observed_behavior",
+      "subject": "10.20.4.115",
+      "evidence": "Firewall logs show persistent outbound TLS traffic from WS-FIN-09 (10.20.4.115) to 198.51.100.44 on port 443, with periodic 30-second interval pulses, consistent with C2 beaconing.",
+      "conclusion": "The compromised host established a persistent command and control channel to an external server."
+    },
+    {
+      "title": "Malicious C2 Infrastructure Identified",
+      "finding_type": "threat_intelligence",
+      "subject": "stage2.malicious-domain.xyz / 198.51.100.44",
+      "evidence": "Threat intelligence enrichment identified 'stage2.malicious-domain.xyz' as a malicious domain with a reputation score of 89/100, resolved via Fast Flux DNS. This IOC also matches a US-CERT advisory bulletin.",
+      "conclusion": "The C2 infrastructure used by the attacker is known to be malicious and associated with threat activity."
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "A user on WS-FIN-09 opened a malicious attachment, likely from a phishing email."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "Microsoft Excel spawned PowerShell, which executed a hidden, encoded command."
+    },
+    {
+      "attack_stage": "Defense Evasion",
+      "description": "The use of an encoded PowerShell command was intended to obfuscate malicious activity and bypass security controls."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The PowerShell script established a persistent C2 beacon to 'stage2.malicious-domain.xyz' (198.51.100.44) over TLS."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-14T18:15:02.000Z",
+      "attack_behavior": "Suspicious process execution (excel.exe -> powershell.exe) detected on WS-FIN-09.",
+      "evidence_field": "case.child_containers[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:16:30.000Z",
+      "attack_behavior": "Outbound beacon traffic detected from WS-FIN-09 to 198.51.100.44.",
+      "evidence_field": "case.child_containers[1].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:20:45.000Z",
+      "attack_behavior": "Analysis reveals encoded PowerShell payload attempts download from remote domain.",
+      "evidence_field": "case.child_containers[0].artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:22:15.000Z",
+      "attack_behavior": "C2 beacon domain 'stage2.malicious-domain.xyz' identified.",
+      "evidence_field": "case.artifacts[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:23:01.000Z",
+      "attack_behavior": "Threat intelligence confirms 'stage2.malicious-domain.xyz' as malicious.",
+      "evidence_field": "case.artifacts[0].notes[0].create_time"
+    },
+    {
+      "timestamp": "2026-08-14T18:25:30.000Z",
+      "attack_behavior": "Host network isolation approved for WS-FIN-09.",
+      "evidence_field": "case.comments[0].create_time"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "stage2.malicious-domain.xyz",
+      "context": "C2 beacon domain, resolved via Fast Flux DNS, 89/100 Malicious reputation."
+    },
+    {
+      "indicator_type": "ip",
+      "value": "198.51.100.44",
+      "context": "C2 server IP address, destination for persistent outbound TLS traffic."
+    },
+    {
+      "indicator_type": "command_line",
+      "value": "powershell.exe -NonI -W Hidden -EncodedCommand <BASE64_PAYLOAD>",
+      "context": "Malicious PowerShell execution pattern used for payload download."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Isolate host WS-FIN-09 from the network to prevent further compromise or lateral movement.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Blocking",
+      "description": "Block the malicious domain 'stage2.malicious-domain.xyz' and IP address '198.51.100.44' at all network perimeter devices (firewalls, DNS servers, proxies).",
+      "priority": "High"
+    },
+    {
+      "action_type": "Eradication",
+      "description": "Initiate forensic analysis on WS-FIN-09 to determine the full extent of compromise, followed by re-imaging the system.",
+      "priority": "High"
+    },
+    {
+      "action_type": "User Education",
+      "description": "Conduct targeted phishing awareness training for the affected user and the finance department.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The full decoded content of the PowerShell payload beyond the IEX Net.WebClient download attempt.",
+    "The specific file name and type of the malicious attachment that initiated the compromise.",
+    "The initial delivery vector details (e.g., email sender, subject, headers).",
+    "The full scope of compromise, including potential lateral movement or data exfiltration beyond the initial beaconing."
+  ]
+}

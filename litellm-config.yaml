@@ -1,0 +1,19 @@
+model_list:
+  # Native Google generateContent API - NOT the OpenAI-compatibility shim.
+  - model_name: gemini-native
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      # Optional for routing (LiteLLM derives it from the `gemini/` prefix), but set
+      # explicitly so the upstream host is reportable via /model/info and the admin UI.
+      # LiteLLM appends /models/<model>:generateContent to this at request time.
+      api_base: https://generativelanguage.googleapis.com/v1beta
+
+litellm_settings:
+  # Silently discard params a native provider does not accept, instead of erroring.
+  drop_params: true
+
+# The admin dashboard at /ui additionally requires a master key AND a Postgres
+# DATABASE_URL; without a database, /login fails with "Not connected to DB!".
+# general_settings:
+#   master_key: os.environ/LITELLM_MASTER_KEY

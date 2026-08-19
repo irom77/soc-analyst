@@ -222,6 +222,20 @@ uv run case-analyzer examples/generic-case.json \
 
 The CLI automatically loads `.env` from the working directory. `.env` is ignored by Git and must not be committed. Existing environment variables and command-line options take precedence. `CASE_ANALYZER_BASE_URL` is optional when using OpenAI. The equivalent `OPENAI_MODEL`, `OPENAI_API_KEY`, and `OPENAI_BASE_URL` variables are also accepted.
 
+### Use a model without an OpenAI-compatible endpoint
+
+Because the analyzer always speaks the OpenAI API format, a provider that offers no
+OpenAI-compatible endpoint can be reached by putting a translating gateway in front of
+it. [`litellm-config.yaml`](litellm-config.yaml) configures a
+[LiteLLM](https://docs.litellm.ai/) proxy for exactly that, and
+[`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md) records a
+verified run against Google's native `generateContent` API — including the two
+load-bearing version pins the install needs, and a recorded
+[`InvestigationReport`](examples/litellm-proxy/splunk-soar-analysis-via-litellm-proxy.json).
+
+No application code changes are required; only the three `CASE_ANALYZER_*` values
+change, and `.env.example` carries them as commented entries.
+
 ### Model and gateway limits
 
 The analyzer uses `ChatOpenAI` to send requests in the OpenAI API format. The
@@ -232,6 +246,15 @@ internal gateway. A request can therefore follow this path:
 ```text
 case-analyzer -> OpenAI-compatible gateway -> selected model
 ```
+
+A translating proxy adds one hop, which is how a non-OpenAI-compatible provider is
+reached (see [`examples/litellm-proxy/README.md`](examples/litellm-proxy/README.md)):
+
+```text
+case-analyzer -> LiteLLM proxy -> provider's native API -> selected model
+```
+
+Every limit described below applies to that intermediary too.
 
 The selected model's advertised context window is only an upper bound. An
 intermediary gateway can enforce a smaller input or output token limit, HTTP request
