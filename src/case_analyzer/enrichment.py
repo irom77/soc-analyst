@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+import idna
+
 from .schemas import (
     CanonicalCase,
     CaseAnalyzerEnrichment,
@@ -539,22 +541,51 @@ def _abuseipdb_lookup(
     }
 
 
-def _validate(kind: str, value: str) -> tuple[bool, str]:
+class _Validated(NamedTuple):
+    """The outcome of syntax validation for one observable.
+
+    `unicode_form` is the spelling the case used, carried only when it was not plain
+    ASCII; it is what `value` is the punycode encoding of.
+    """
+
+    valid: bool
+    value: str
+    unicode_form: str = ""
+
+
+def _validate(kind: str, value: str) -> _Validated:
+    """Check syntax and normalize, without contacting anything.
+
+    Domains are encoded to punycode first, so an internationalized name written in
+    Unicode is validated and looked up instead of being discarded by the ASCII-only
+    `_DOMAIN_RE` — the exact shape a homograph attack takes.
+
+    The encoding follows **UTS #46, nontransitional**, via the `idna` package, rather
+    than Python's built-in `"idna"` codec. The built-in codec implements IDNA 2003,
+    whose transitional mapping rewrites some characters into different ASCII: `faß.de`
+    encodes to `fass.de`, a domain someone else may own. Looking up a different name
+    than the one the case recorded, and presenting the answer as being about this
+    observable, is the failure this choice avoids. Nontransitional is also what current
+    browsers resolve with, so what is validated here matches what the user's browser
+    would have reached. The two standards agree on every other realistic host value in
+    the test suite; where they differ, UTS #46 is the stricter of the two.
+    """
     candidate = value.strip().rstrip(".")
     if kind == "ip":
         try:
-            return True, str(ipaddress.ip_address(candidate))
+            return _Validated(True, str(ipaddress.ip_address(candidate)))
         except ValueError:
-            return False, candidate
+            return _Validated(False, candidate)
     if kind == "file_hash":
         normalized = candidate.casefold()
         valid = len(normalized) in _HASH_ALGORITHMS and bool(_HEX_RE.fullmatch(normalized))
-        return valid, normalized
+        return _Validated(valid, normalized)
+    unicode_form = candidate if not candidate.isascii() else ""
     try:
-        ascii_domain = candidate.encode("idna").decode("ascii").casefold()
-    except UnicodeError:
-        return False, candidate
-    return bool(_DOMAIN_RE.fullmatch(ascii_domain)), ascii_domain
+        ascii_domain = idna.encode(candidate, uts46=True, transitional=False).decode("ascii").casefold()
+    except (idna.IDNAError, UnicodeError):
+        return _Validated(False, candidate, unicode_form)
+    return _Validated(bool(_DOMAIN_RE.fullmatch(ascii_domain)), ascii_domain, unicode_form)
 
 
 def _comparison(kind: str, valid: bool, declared: bool, lookup_status: str) -> EnrichmentComparison:
@@ -637,14 +668,18 @@ def enrich_case(
 
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for observable in _walk_observables(case.source_data):
-        valid, normalized = _validate(observable.kind, observable.value)
+        checked = _validate(observable.kind, observable.value)
         entry = grouped.setdefault(
-            (observable.kind, normalized),
-            {"valid": valid, "declared": False, "paths": [], "context": []},
+            (observable.kind, checked.value),
+            {"valid": checked.valid, "declared": False, "paths": [], "context": [], "unicode": []},
         )
         entry["paths"].append(observable.path)
         entry["context"].extend(observable.context)
         entry["declared"] = entry["declared"] or observable.declared
+        # More than one Unicode spelling can encode to the same name (case, width,
+        # ignorable characters), so every distinct one seen is kept rather than the first.
+        if checked.unicode_form:
+            entry["unicode"].append(checked.unicode_form)
     items = sorted(grouped.items(), key=lambda item: _priority(item, virustotal=bool(virustotal_api_key)))
     selected = items[:limit]
 
@@ -694,6 +729,7 @@ def enrich_case(
         valid = source["valid"]
         declared = source["declared"]
         source_paths = list(dict.fromkeys(source["paths"]))
+        unicode_values = list(dict.fromkeys(source["unicode"]))
         context = list(dict.fromkeys(source["context"]))[:_MAX_CONTEXT_SNIPPETS]
         provider = "local-validation"
         details: dict[str, Any] = {}
@@ -718,6 +754,7 @@ def enrich_case(
                 observable_type=kind,
                 value=value,
                 valid=valid,
+                unicode_values=unicode_values,
                 source_paths=source_paths,
                 provider=provider,
                 retrieved_at=retrieved_at,
@@ -740,6 +777,7 @@ def enrich_case(
                     observable_type=kind,
                     value=value,
                     valid=True,
+                    unicode_values=unicode_values,
                     source_paths=source_paths,
                     provider=vt_provider,
                     retrieved_at=retrieved_at,
@@ -766,6 +804,7 @@ def enrich_case(
                     observable_type=kind,
                     value=value,
                     valid=True,
+                    unicode_values=unicode_values,
                     source_paths=source_paths,
                     provider=abuse_provider,
                     retrieved_at=retrieved_at,

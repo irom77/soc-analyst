@@ -13,12 +13,13 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
 from the 2026-08-18 limitations review. Its eval-harness prerequisite, prompt-injection
-item, and all of Tier 1 are done (see "Completed" below); the remaining work —
-enrichment caching and IDN handling, then the dedicated audit mode — is open there and
-not duplicated here. Two design questions in that plan's review section gate Tier 2.
+item, all of Tier 1, and Tier 2 item 6 are done (see "Completed" below); the remaining
+work — enrichment caching, then full-URL/email lookups and the dedicated audit mode — is
+open there and not duplicated here. One design question in that plan's review section
+still gates Tier 2: how provider pacing reconciles with the enrichment time budget.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (114 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (154 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -42,6 +43,34 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 ## Extraction coverage
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
+
+## Completed (2026-08-19 internationalized domains)
+
+- [x] Tier 2 item 6 — IDN handling. Half of it was already in place: `_validate` has
+  punycoded domains before matching the ASCII-only `_DOMAIN_RE` since the original
+  enrichment work, so Unicode names were being looked up rather than discarded. What was
+  missing was the choice of standard and the original spelling.
+
+  Domains are now encoded with **UTS #46, nontransitional**, through the `idna` package
+  instead of Python's built-in IDNA 2003 codec. The deciding case is `faß.de`: the
+  built-in codec's transitional mapping encodes it to `fass.de`, so the tool would look
+  up a domain someone else may own and attribute the answer to the observable in the
+  case. Nontransitional is also what browsers resolve with. The two were compared first
+  across the host shapes the suite covers — NetBIOS names, `localhost`, literal
+  addresses, underscored labels, over-long labels, leading and trailing hyphens, trailing
+  dots, mixed case, ordinary IDNs — and agreed on every validity outcome; they diverge
+  only on transitional mappings and on emoji labels, which are now invalid. `idna` was
+  already installed transitively via `httpx`/`requests`, so it is newly declared, not
+  newly installed.
+
+  `EnrichmentObservation.unicode_values` records the non-ASCII spellings the case used;
+  `value` stays the punycode form. A list, not a field, because case, width, and
+  ignorable characters can collapse several spellings into one name. It is provenance
+  and not a homograph verdict — confusable spellings still render identically in it, so
+  the reliable signal remains the `xn--` prefix on `value`, and the schema says so.
+
+  Additive: both recorded enrichment examples validate untouched. 154 tests pass and
+  `ruff check src tests` is clean.
 
 ## Completed (2026-08-19 report self-description)
 

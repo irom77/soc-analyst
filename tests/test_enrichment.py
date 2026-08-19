@@ -72,6 +72,51 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual("not_comparable", ip.comparison_with_case.status)
         self.assertIn("Existing reputation", ip.artifact_context[0])
 
+    def test_a_unicode_domain_is_looked_up_and_both_spellings_are_recorded(self):
+        """The Unicode form is provenance for a punycode name the reader cannot decode.
+
+        Both spellings appear in the same case, and both encode to one observable, so the
+        lookup happens once and every distinct spelling is kept.
+        """
+        looked_up = []
+
+        def domain_lookup(value, timeout):
+            looked_up.append(value)
+            return "found", "test-dns", {"answers": [value]}
+
+        case = normalize_case(
+            {
+                "id": "case-idn",
+                "title": "Lookalike",
+                "artifacts": [
+                    {
+                        "cef": {"destinationDnsDomain": "\u0430pple.com"},
+                        "cef_types": {"destinationDnsDomain": ["domain"]},
+                    },
+                    {
+                        "cef": {"destinationDnsDomain": "\u0430PPLE.com"},
+                        "cef_types": {"destinationDnsDomain": ["domain"]},
+                    },
+                ],
+            }
+        )
+
+        result = enrich_case(case, domain_lookup=domain_lookup)
+
+        (observation,) = result.observations
+        self.assertTrue(observation.valid)
+        self.assertEqual("xn--pple-43d.com", observation.value)
+        self.assertEqual(["\u0430pple.com", "\u0430PPLE.com"], observation.unicode_values)
+        self.assertEqual(["xn--pple-43d.com"], looked_up)
+
+    def test_an_ascii_domain_records_no_unicode_spelling(self):
+        case = normalize_case({"id": "case-ascii", "title": "Plain", "destinationDnsDomain": "Example.COM"})
+
+        result = enrich_case(case, domain_lookup=_found_domain)
+
+        self.assertEqual("example.com", result.observations[0].value)
+        self.assertEqual([], result.observations[0].unicode_values)
+
     def test_invalid_inferred_value_is_not_reported_as_a_case_contradiction(self):
         case = normalize_case({"id": "case-2", "title": "Invalid", "destinationAddress": "999.1.1.1"})
 
@@ -343,12 +388,53 @@ class EnrichmentTests(unittest.TestCase):
 
 class ValidationTests(unittest.TestCase):
     def test_domain_and_ip_validation(self):
-        self.assertEqual((True, "example.com"), _validate("domain", "example.com."))
-        self.assertEqual((True, "xn--bcher-kva.example"), _validate("domain", "Bücher.example"))
-        self.assertEqual((False, "not a domain"), _validate("domain", "not a domain"))
-        self.assertEqual((True, "8.8.8.8"), _validate("ip", " 8.8.8.8 "))
-        self.assertEqual((True, "2001:db8::1"), _validate("ip", "2001:0db8:0000::1"))
-        self.assertEqual((False, "999.1.1.1"), _validate("ip", "999.1.1.1"))
+        self.assertEqual((True, "example.com", ""), _validate("domain", "example.com."))
+        self.assertEqual((True, "xn--bcher-kva.example", "Bücher.example"), _validate("domain", "Bücher.example"))
+        self.assertEqual((False, "not a domain", ""), _validate("domain", "not a domain"))
+        self.assertEqual((True, "8.8.8.8", ""), _validate("ip", " 8.8.8.8 "))
+        self.assertEqual((True, "2001:db8::1", ""), _validate("ip", "2001:0db8:0000::1"))
+        self.assertEqual((False, "999.1.1.1", ""), _validate("ip", "999.1.1.1"))
+
+    def test_a_unicode_domain_is_validated_rather_than_discarded(self):
+        """The homograph shape: a Cyrillic lookalike must be looked up, not dropped."""
+        checked = _validate("domain", "\u0430pple.com")
+        self.assertTrue(checked.valid)
+        self.assertEqual("xn--pple-43d.com", checked.value)
+        self.assertEqual("\u0430pple.com", checked.unicode_form)
+        self.assertNotEqual(_validate("domain", "apple.com").value, checked.value)
+
+    def test_transitional_mapping_does_not_rewrite_the_domain(self):
+        """IDNA 2003 encodes `faß.de` to `fass.de` — a name someone else may own.
+
+        Under UTS #46 nontransitional it stays its own domain, so the lookup is about
+        the observable the case actually recorded.
+        """
+        self.assertEqual("fass.de", "faß.de".encode("idna").decode("ascii"))
+        self.assertEqual("xn--fa-hia.de", _validate("domain", "faß.de").value)
+
+    def test_the_unicode_form_is_only_carried_when_the_case_was_not_ascii(self):
+        """`unicode_form` records a spelling, not a normalization.
+
+        Case folding and the trailing dot also change the value, but they are not
+        something a reader needs the original characters to interpret.
+        """
+        self.assertEqual("", _validate("domain", "EXAMPLE.COM.").unicode_form)
+        self.assertEqual("", _validate("domain", "xn--pple-43d.com").unicode_form)
+
+    def test_an_undecodable_domain_is_invalid_and_keeps_its_original_text(self):
+        checked = _validate("domain", "-lead.example")
+        self.assertFalse(checked.valid)
+        self.assertEqual("-lead.example", checked.value)
+
+    def test_hostnames_that_are_not_domains_stay_invalid(self):
+        """Guard against the stricter encoder changing the answer for ordinary values.
+
+        These are the shapes `_HINT_KINDS` calls out as legitimately not domains, so a
+        failure here would be a regression rather than a discovery.
+        """
+        for value in ("WORKSTATION01", "srv-dc01", "localhost", "192.168.1.1", "test_.example.com"):
+            with self.subTest(value=value):
+                self.assertFalse(_validate("domain", value).valid)
 
 
 class HttpJsonTests(unittest.TestCase):

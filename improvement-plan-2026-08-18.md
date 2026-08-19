@@ -205,12 +205,43 @@ later; see TODO) and the duplicated-cost concern in one change. `--cache-dir` fo
 the path, `--no-cache` to opt out, and record `"cache": true` in observation details
 so provenance stays honest.
 
-### 6. IDN (internationalized domain) handling
+### 6. IDN (internationalized domain) handling — DONE (2026-08-19)
 
-`_DOMAIN_RE` in `enrichment.py` is ASCII-only, so a Unicode-form IDN fails syntax
-validation and is never looked up — the exact shape homograph attacks use. IDNA-encode
-Unicode domains to punycode before validation (marking invalid on codec failure) and
-record both forms in the observation.
+The item's premise was partly stale. `_validate` already punycoded domains before
+matching `_DOMAIN_RE`, added with the original enrichment work (`2f31821`), so Unicode
+names were being looked up rather than discarded. Two things were genuinely missing: the
+standard was never chosen (review point 4), and only the encoded form was recorded.
+
+**Standard: UTS #46, nontransitional, via the `idna` package.** The decisive case is
+`faß.de`. Python's built-in `"idna"` codec is IDNA 2003, whose transitional mapping
+encodes it to `fass.de` — a different domain, which someone else may own. The tool would
+then look up one name, and present the answer as being about another; for an enrichment
+step whose whole purpose is attribution, that is a correctness bug rather than a
+strictness preference. Nontransitional is also what current browsers resolve with, so
+what is validated here matches what the user's browser would have reached.
+
+The switch was measured before it was made: across the realistic host values the test
+suite covers — NetBIOS names, `srv-dc01`, `localhost`, literal addresses, underscored
+labels, over-long labels, leading and trailing hyphens, trailing dots, mixed case, and
+ordinary IDNs — the two standards produce the **same valid/invalid outcome for every
+one**. They diverge on transitional mappings (the reason for the change) and on emoji
+labels, which IDNA 2003 accepts and UTS #46 rejects; an emoji domain is now marked
+invalid and not looked up. `idna` was already installed as a transitive dependency of
+`httpx`/`requests`, so declaring it direct adds an import, not an install.
+
+**Both forms** are recorded as `EnrichmentObservation.unicode_values`: `value` stays the
+punycode form and the list carries the non-ASCII spellings the case used, empty when the
+case wrote the name in ASCII. It is a list rather than a single field because more than
+one spelling can encode to the same name — case, width, and ignorable characters all
+collapse — and keeping only the first would silently drop the others.
+
+One honest limit is documented on the field itself: this is provenance, not a
+homograph verdict. Two confusable spellings render identically in `unicode_values`, so a
+reader comparing them against a legitimate domain by eye can be fooled exactly as the
+original victim was. The reliable signal that a name was not plain ASCII is the `xn--`
+prefix on `value`. Deriving an actual confusability judgment — mixed-script labels within
+a single label being the usual signature — is a separate piece of work and is not
+attempted here.
 
 ### 7. Full-URL and email lookups
 
@@ -285,10 +316,12 @@ Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken firs
 because they were the only Tier 1 items with no open review question; item 1 followed
 once review points 1 and 2 were decided, which is recorded under the item itself.
 
-Tier 1 is complete. Tier 2 item 5 is blocked on review point 3 (whether pacing waits
-consume the enrichment budget) and item 6 on review point 4 (which IDNA standard
-applies); item 7 is sequenced after item 5. Tier 3 item 8 still needs its own design
-pass against a real control set.
+Tier 1 is complete, and Tier 2 item 6 with it — it was taken next because review point 4
+turned out to be answerable from measurement rather than preference. Item 5 remains
+blocked on review point 3 (whether pacing waits consume the enrichment budget, what
+becomes of the overflow, and how a paced provider avoids starving faster ones); item 7 is
+sequenced after item 5. Tier 3 item 8 still needs its own design pass against a real
+control set.
 
 ## Review — to be verified before implementation
 
@@ -316,6 +349,10 @@ resolved before work begins:
    provider from starving faster providers. Atomic cache writes do not coordinate
    request start times across processes, so cross-process pacing needs an explicit
    lock or lease if it is intended to be stronger than best-effort.
-4. **Specify IDN normalization behavior.** Choose and document the applicable IDNA
+4. **Resolved (2026-08-19).** **Specify IDN normalization behavior.** Choose and document the applicable IDNA
    standard or library (for example, modern UTS #46 processing versus Python's
    built-in codec), because their handling of some Unicode domain names differs.
+   Answered under item 6: UTS #46 nontransitional via the `idna` package, chosen because
+   IDNA 2003's transitional mapping can encode to a different domain than the case
+   recorded. The two were compared on the suite's realistic host values first; they
+   agreed on every validity outcome there.

@@ -18,6 +18,16 @@ class EnrichmentObservation(BaseModel):
     observable_type: Literal["domain", "ip", "file_hash"]
     value: str
     valid: bool
+    # The non-ASCII spellings the case used for this observable, which `value` is the
+    # punycode form of. Empty when the case wrote it in ASCII. Recorded because the
+    # punycode form alone does not say which characters produced it, and a domain can
+    # reach the same encoding from more than one spelling.
+    #
+    # This is provenance, not a verdict: two visually identical spellings still look
+    # identical here, so a reader comparing `unicode_values` against a legitimate domain
+    # by eye can be fooled exactly as the original victim was. The `xn--` prefix in
+    # `value` is the reliable signal that a name was not plain ASCII.
+    unicode_values: list[str] = Field(default_factory=list)
     source_paths: list[str] = Field(default_factory=list)
     provider: str
     retrieved_at: datetime

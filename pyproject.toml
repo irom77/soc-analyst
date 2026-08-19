@@ -5,6 +5,12 @@ description = "Standalone LLM-assisted security case analyzer"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    # Direct: `enrichment._validate` imports it to punycode internationalized domains
+    # under UTS #46 nontransitional. Already present transitively via httpx/requests,
+    # but this package imports it, so it is declared. The built-in `"idna"` codec is
+    # IDNA 2003 and its transitional mapping can encode to a *different* domain
+    # (`faß.de` -> `fass.de`), which would enrich the wrong name.
+    "idna>=3.7",
     "litellm>=1.97.0",
     # Direct: LiteLLM subclasses openai's exception types rather than a base of its
     # own, so `openai.OpenAIError` is the only working catch-all. Range matches

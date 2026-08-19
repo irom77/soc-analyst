@@ -72,6 +72,17 @@ recognized and contribute their host or domain part, whose source path is marked
 `#host` or `#domain` suffix; the URL and the address themselves are not looked up,
 because no configured provider covers them.
 
+Internationalized domains are encoded to punycode before validation, so a name written
+in Unicode is looked up rather than discarded by the ASCII-only syntax check — the shape
+a homograph attack takes. The encoding follows UTS #46 nontransitional, the same
+processing current browsers use, rather than Python's built-in IDNA 2003 codec, whose
+transitional mapping would rewrite `faß.de` into `fass.de` and enrich a domain someone
+else may own. `value` is always the punycode form; `unicode_values` lists the non-ASCII
+spellings the case used, and is empty when the case wrote the name in ASCII. Treat that
+list as provenance rather than a verdict: two confusable spellings still look identical
+in it, so the reliable signal that a name was not plain ASCII is the `xn--` prefix on
+`value`.
+
 The generated data is kept separately under
 `case.case_analyzer_enrichment.observations`; imported artifacts, notes, comments, and
 other `source_data` are never overwritten. Each observation records its provider,
