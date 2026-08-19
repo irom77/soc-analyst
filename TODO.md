@@ -87,11 +87,16 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `examples/litellm-proxy/` stay as a documented alternative for centralized-key or
   shared deployments.
 
-- [ ] Add an offline regression test for the timeout forwarding contract: a local
-  `HTTPServer` that sleeps past the deadline, called with `timeout=1.0`, asserting the
-  call terminates early with exit 5 (probed at 1.67s, loopback only). This checks that
-  the configured timeout reaches the provider call under the name the client actually
-  reads — it does not attempt to prove the client's timeout implementation.
+- [ ] Add an offline regression test for the timeout forwarding contract. Enter through
+  the application boundary — `_request_structured`, not `litellm.completion` — because
+  exit 5 is produced by our translation layer, and entering there also exercises the new
+  `except Timeout` handler. Point it at a local `ThreadingHTTPServer` (with
+  `daemon_threads = True`, or teardown blocks on the sleeping handler) and assert
+  `LLMProviderError.exit_code == 5`. Probed: raised after 1.22s, teardown 0.49s,
+  loopback only, no credentials. This checks that the configured timeout reaches the
+  provider call under the name the client actually reads and that the failure is
+  translated to the documented exit code — it does not attempt to prove the client's
+  timeout implementation.
   `tests/test_analyzer.py:130` asserts on a `Mock`, which records any keyword whether
   or not the real callable accepts it, so a renamed parameter passes the suite while
   silently disabling the timeout. `ChatLiteLLM` is exactly that hazard: it has no

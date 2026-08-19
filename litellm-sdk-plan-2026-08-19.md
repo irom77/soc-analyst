@@ -15,26 +15,33 @@ real `InvestigationReport` schema, not taken from documentation.
 | Does `ChatLiteLLM.with_structured_output(InvestigationReport)` work? | Yes — valid report, 4 findings, 4 attack-chain steps |
 | Does `litellm.completion(response_format=InvestigationReport)` work? | Yes — same shape |
 | Do either need Python 3.12, like the proxy did? | **No.** Both pass on 3.14. The `uvloop` breakage was the `[proxy]` extra only |
-| Does the existing `openai.*` except-ladder still catch? | **Yes, entirely** — but it is replaced anyway, per finding 3 |
+| Does the existing `openai.*` except-ladder still catch? | **Yes, entirely** — but it is replaced anyway, per finding 3. This describes today's code, not the target |
 
-The exception result is the load-bearing one, because it means the sanitized-error
-contract in `analyzer.py` survives without being rewritten:
+### Exception behaviour — describes today's code, NOT the target
 
-| Failure injected | Exception raised | Caught by | Exit |
+> **Do not implement from this table.** It records what the *current* `openai.*`
+> ladder does when LiteLLM raises, which is why the migration is low-risk. The ladder
+> is nonetheless **replaced** with `litellm.exceptions`; the authoritative mapping is
+> the table under **finding 3** in Review findings below, and the instruction is
+> step 4. Preserving the `openai` imports would be a misreading of this section.
+
+| Failure injected | Exception raised | Caught by *today's* ladder | Exit |
 | --- | --- | --- | --- |
 | Bad API key | `litellm.exceptions.AuthenticationError` | `except AuthenticationError` | 3 |
 | Unreachable host | `litellm.exceptions.APIConnectionError` | `except APIConnectionError` | 5 |
 | Unknown model | `litellm.exceptions.NotFoundError` | `except APIStatusError` | 6 |
 | Slow endpoint, `timeout=1.0` | `litellm.exceptions.Timeout` | `except APITimeoutError` | 5 |
 
-LiteLLM subclasses the OpenAI exception types deliberately, so all six handlers in
-`_request_structured` keep working. This corrects the initial assumption that ~25 lines
-of error mapping would need rewriting; the real figure is zero.
+LiteLLM subclasses the OpenAI exception types deliberately, so every handler in
+today's `_request_structured` already catches. That is the useful result: the migration
+inherits no behavioural cliff, and the earlier estimate of ~25 lines of error-mapping
+rework was wrong.
 
-Two review findings qualify that result; see
-[Review findings](#review-findings-2026-08-19) below. The ladder catches
-`JSONSchemaValidationError` too, but that exception carries raw model output, and the
-`openai` names the ladder is written against are not a declared dependency.
+The rewrite that *is* required is a boundary change, not a behavioural one. Two review
+findings drive it (see [Review findings](#review-findings-2026-08-19)): the ladder also
+catches `JSONSchemaValidationError`, which carries raw model output, and the `openai`
+names it is written against are not a declared dependency of this project. After
+migration the exit codes above are unchanged — only the class names catching them are.
 
 ## Options
 
@@ -187,14 +194,40 @@ behavior is broken. Option B avoids the trap because `litellm.completion` takes
      syntax.
 
 7. **Guard against the silent-kwarg class of bug** — add an offline regression test
-   that exercises LiteLLM's real completion path, not a mock: start a local
-   `HTTPServer` that sleeps well past the deadline, point `api_base` at it, call with
-   `timeout=1.0`, and assert the call terminates early with exit 5. Probed at 1.67s,
-   no credentials and no traffic beyond loopback.
+   that exercises the real completion path, not a mock.
+
+   **Call the application boundary, not `litellm.completion` directly.** A direct call
+   can only assert that `Timeout` is raised; exit 5 is produced by *our* translation
+   layer, so the test must enter through `_request_structured` (or the CLI) for the
+   assertion to mean anything. Entering there also exercises the new
+   `except Timeout` handler from step 4, which a direct call would skip entirely.
+
+   Fixture and assertions, both probed:
+
+       srv = ThreadingHTTPServer(("127.0.0.1", <port>), SlowHandler)
+       srv.daemon_threads = True        # required: see teardown note below
+       threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+       with self.assertRaises(LLMProviderError) as raised:
+           _request_structured(schema, messages, model="openai/gpt-4o",
+                               api_key="dummy", base_url=f"http://127.0.0.1:{port}",
+                               timeout=1.0)
+       self.assertEqual(5, raised.exception.exit_code)
+
+   Measured: `LLMProviderError` after **1.22s**, `exit_code` 5, message
+   `LLM request timed out; check the endpoint and try again.`, `__cause__` a
+   `litellm.exceptions.Timeout`. No credentials, no traffic beyond loopback.
+
+   **Teardown must not block on the sleeping handler.** A plain `HTTPServer` is
+   single-threaded, so `shutdown()` waits out the full sleep after the client has
+   already timed out. `ThreadingHTTPServer` with `daemon_threads = True` tears down in
+   **0.49s** instead of ~10s. Use a short sleep and a generous margin over the
+   timeout rather than a long one.
 
    Scope it honestly: this verifies **our forwarding contract** — that the configured
-   timeout reaches the provider call under the name LiteLLM actually reads — rather
-   than proving LiteLLM's timeout implementation. That is the property that would have
+   timeout reaches the provider call under the name the client actually reads, and that
+   the resulting failure is translated to the documented exit code — rather than
+   proving LiteLLM's timeout implementation. That is the property that would have
    caught the `ChatLiteLLM` `request_timeout` trap, and the one a mock cannot check.
 
 ## Verification
@@ -246,8 +279,10 @@ asserting on `timeout=` would reproduce the very mock weakness the plan criticiz
 
 The suggested alternative was probed and works offline, with no credentials and no
 network beyond loopback: a local `HTTPServer` that sleeps 10s, called with
-`timeout=1.0`, raised `litellm.exceptions.Timeout` after **1.67s**, caught by
-`except APITimeoutError` for exit 5. Step 7 is rewritten to specify that test.
+`timeout=1.0`, raised `litellm.exceptions.Timeout` after **1.67s**. That probe used
+today's `except APITimeoutError`; after step 4 the same exception is caught by
+`except Timeout`, and either way the application boundary returns exit 5. Step 7 is
+rewritten to specify the test.
 
 ### 3. Catch LiteLLM's own exception classes — accepted, and the risk is larger than reported
 
