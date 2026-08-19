@@ -59,19 +59,30 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   in FastAPI 0.140, and its own `fastapi>=0.136.3,<1.0` bound resolves to a broken
   combination). Both are pinned to upstream bugs and should be revisited on upgrade.
 
-- [ ] Decide whether to adopt the LiteLLM **SDK** in place of the proxy. Structured
-  output is now proven to translate, so the remaining trade-off is operational: the
-  proxy needs a sidecar process (and Postgres for its `/ui` dashboard), which sits
-  awkwardly with a standalone CLI, while the SDK adds ~107 transitive dependencies to
-  a currently three-dependency project and would move `analyzer.py` off `ChatOpenAI`.
-  LiteLLM's exception classes subclass the `openai` ones, so the sanitized error
-  mapping in `analyzer.py` would largely survive, but the four
-  `patch("case_analyzer.analyzer.ChatOpenAI")` sites in `tests/test_analyzer.py` would
-  need retargeting.
+- [x] Decide whether to adopt the LiteLLM **SDK** in place of the proxy. Decided:
+  adopt it, dropping LangChain, per [`litellm-sdk-plan-2026-08-19.md`](litellm-sdk-plan-2026-08-19.md).
+  The proxy needs a sidecar process (and Postgres for its `/ui` dashboard), which sits
+  awkwardly with a standalone CLI. Two measurements settled the approach: calling
+  `litellm.completion` directly resolves to 49 dependencies against 65 for
+  `langchain-litellm` and 39 today, because `langchain-litellm` pulls `langchain-core`
+  *and* `litellm`; and the `openai.*` except-ladder in `analyzer.py` catches LiteLLM's
+  exceptions unchanged, so the sanitized error mapping needs no rewrite at all.
+  Both correct earlier estimates made before measurement. The SDK also needs no Python
+  pin — 3.14 passes, since `uvloop` was a `[proxy]` extra.
 
-- [ ] Structured output through the proxy is verified for Gemini's native API only.
-  LiteLLM translates `response_format` per provider, so Anthropic, Bedrock, or Vertex
-  each need their own recorded run before being assumed to work.
+- [ ] Execute that plan: replace `langchain-openai` with `litellm`, build messages as
+  dicts, swap `with_structured_output` for `response_format` plus an explicit
+  `model_validate_json`, and retarget the four
+  `patch("case_analyzer.analyzer.ChatOpenAI")` sites in `tests/test_analyzer.py`.
+  Scope is Gemini only; `litellm-config.yaml` and `examples/litellm-proxy/` stay as a
+  documented alternative for centralized-key or shared deployments.
+
+- [ ] Add a test that exercises the real client path without a mock, asserting the
+  `--llm-timeout` value actually reaches the provider call. `tests/test_analyzer.py:130`
+  asserts on a `Mock`, which records any keyword whether or not the real callable
+  accepts it, so a renamed parameter passes the suite while silently disabling the
+  timeout. `ChatLiteLLM` is exactly that hazard: it has no `timeout` field (it is
+  `request_timeout`) and accepts `timeout=` silently, undoing M-8 without an error.
 
 ## Completed (2026-08-18 injection hardening)
 
