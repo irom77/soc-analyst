@@ -66,23 +66,37 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `litellm.completion` directly resolves to 49 dependencies against 65 for
   `langchain-litellm` and 39 today, because `langchain-litellm` pulls `langchain-core`
   *and* `litellm`; and the `openai.*` except-ladder in `analyzer.py` catches LiteLLM's
-  exceptions unchanged, so the sanitized error mapping needs no rewrite at all.
-  Both correct earlier estimates made before measurement. The SDK also needs no Python
-  pin — 3.14 passes, since `uvloop` was a `[proxy]` extra.
+  exceptions unchanged. Both correct earlier estimates made before measurement. The SDK
+  also needs no Python pin — 3.14 passes, since `uvloop` was a `[proxy]` extra.
+  Review superseded the second point in part: the ladder does catch, but it is replaced
+  with `litellm.exceptions` anyway, because importing `openai` while declaring only
+  `litellm` leaves a direct dependency undeclared — and LiteLLM pins
+  `openai>=2.20.0,<3.0.0`, downgrading the installed 3.1.0 to 2.54.0.
 
 - [ ] Execute that plan: replace `langchain-openai` with `litellm`, build messages as
   dicts, swap `with_structured_output` for `response_format` plus an explicit
-  `model_validate_json`, and retarget the four
-  `patch("case_analyzer.analyzer.ChatOpenAI")` sites in `tests/test_analyzer.py`.
-  Scope is Gemini only; `litellm-config.yaml` and `examples/litellm-proxy/` stay as a
-  documented alternative for centralized-key or shared deployments.
+  `model_validate_json`, rewrite the except-ladder against `litellm.exceptions`
+  (`Timeout` replaces `APITimeoutError`; `APIStatusError` splits into `NotFoundError`
+  and `BadRequestError`), and update `tests/test_analyzer.py` — four `patch(...)` sites
+  plus nine `.content` assertions that become dictionary access. Do **not** set
+  `litellm.enable_json_schema_validation`: Pydantic stays the sole validator, since
+  LiteLLM's `JSONSchemaValidationError` embeds raw model output that survives on
+  `__cause__`, and the module-global would change behavior for library callers.
+  Also correct the "OpenAI-compatible endpoint" `--base-url` help in `cli.py:48` and
+  `explain_cli.py:20`. Scope is Gemini only; `litellm-config.yaml` and
+  `examples/litellm-proxy/` stay as a documented alternative for centralized-key or
+  shared deployments.
 
-- [ ] Add a test that exercises the real client path without a mock, asserting the
-  `--llm-timeout` value actually reaches the provider call. `tests/test_analyzer.py:130`
-  asserts on a `Mock`, which records any keyword whether or not the real callable
-  accepts it, so a renamed parameter passes the suite while silently disabling the
-  timeout. `ChatLiteLLM` is exactly that hazard: it has no `timeout` field (it is
-  `request_timeout`) and accepts `timeout=` silently, undoing M-8 without an error.
+- [ ] Add an offline regression test for the timeout forwarding contract: a local
+  `HTTPServer` that sleeps past the deadline, called with `timeout=1.0`, asserting the
+  call terminates early with exit 5 (probed at 1.67s, loopback only). This checks that
+  the configured timeout reaches the provider call under the name the client actually
+  reads — it does not attempt to prove the client's timeout implementation.
+  `tests/test_analyzer.py:130` asserts on a `Mock`, which records any keyword whether
+  or not the real callable accepts it, so a renamed parameter passes the suite while
+  silently disabling the timeout. `ChatLiteLLM` is exactly that hazard: it has no
+  `timeout` field (it is `request_timeout`) and accepts `timeout=` silently, undoing
+  M-8 without an error.
 
 ## Completed (2026-08-18 injection hardening)
 
