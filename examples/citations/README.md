@@ -54,3 +54,11 @@ watching across eval runs rather than treating this single sample as a result.
 One case, one model, one route. The schema change is provider-visible, so a different
 provider needs its own run before the extended schema is assumed to work there — the
 same caveat that applies to `response_format` generally.
+
+## Recorded before the run block existed
+
+This result predates `case_analyzer_run` (added the same day with Tier 1 item 1), so it
+has no provenance block. The saved shape is additive — the field was added by
+subclassing the model-facing schema rather than wrapping it — so this file and every
+other recorded result stay valid input to the same readers. New runs carry the block,
+including the post-check outcome recorded here in prose.

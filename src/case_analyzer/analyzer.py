@@ -1,7 +1,7 @@
 import json
 import os
 from importlib.resources import files
-from typing import Any
+from typing import Any, NamedTuple
 
 import litellm
 from dotenv import load_dotenv
@@ -26,7 +26,16 @@ from litellm.exceptions import (
 from openai import OpenAIError
 from pydantic import BaseModel, ValidationError
 
-from .schemas import CanonicalCase, CaseSummary, InvestigationReport
+from .checks import check_report
+from .provenance import build_run_metadata
+from .schemas import (
+    AnalyzedReport,
+    AnalyzedSummary,
+    CanonicalCase,
+    CaseSummary,
+    InvestigationReport,
+    RunChecks,
+)
 
 
 class LLMProviderError(RuntimeError):
@@ -80,17 +89,24 @@ def render_payload_message(payload: dict[str, Any]) -> str:
     return "\n".join([_PAYLOAD_PREAMBLE, _PAYLOAD_BEGIN, json.dumps(payload, ensure_ascii=False), _PAYLOAD_END])
 
 
+def _messages(system_prompt: str, payload: dict[str, Any]) -> list:
+    """The two messages sent for every request, and the exact bytes provenance hashes."""
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": render_payload_message(payload)},
+    ]
+
+
 def build_analysis_messages(
     case: CanonicalCase,
     *,
     knowledge_records: list[dict[str, Any]] | None = None,
     user_input: str = "",
 ) -> list:
-    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
-    return [
-        {"role": "system", "content": _system_prompt()},
-        {"role": "user", "content": render_payload_message(payload)},
-    ]
+    return _messages(
+        _system_prompt(),
+        build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input),
+    )
 
 
 def build_summary_messages(
@@ -100,11 +116,10 @@ def build_summary_messages(
     user_input: str = "",
 ) -> list:
     """Same case payload as the analysis request, asked for as a narrative summary."""
-    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
-    return [
-        {"role": "system", "content": _summary_prompt()},
-        {"role": "user", "content": render_payload_message(payload)},
-    ]
+    return _messages(
+        _summary_prompt(),
+        build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input),
+    )
 
 
 def _validation_summary(exc: ValidationError, limit: int = 3) -> str:
@@ -134,6 +149,17 @@ def _provider_kwargs(model: str) -> dict[str, str]:
     return {"custom_llm_provider": "openai"}
 
 
+class _Resolved(NamedTuple):
+    """Configuration the request actually used, after CLI flags and environment.
+
+    Returned so provenance records what was contacted rather than what was asked for;
+    the two differ whenever a value came from `.env` instead of a flag.
+    """
+
+    model: str
+    base_url: str | None
+
+
 def _request_structured(
     schema: type[BaseModel],
     messages: list,
@@ -142,7 +168,7 @@ def _request_structured(
     base_url: str | None,
     api_key: str | None,
     timeout: float | None,
-):
+) -> tuple[BaseModel, _Resolved]:
     # Make the standalone CLI usable without manually exporting provider
     # variables. Existing environment variables retain precedence over .env.
     load_dotenv()
@@ -152,6 +178,7 @@ def _request_structured(
     selected_key = api_key or os.getenv("CASE_ANALYZER_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not selected_key:
         raise ValueError("Set CASE_ANALYZER_API_KEY or pass --api-key.")
+    selected_base_url = base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL")
     # Each handler below only *builds* the sanitized error; the raise happens after the
     # `try` statement. `raise ... from exc` would defeat the sanitizing, because the
     # original is kept in `__cause__` and reprinted by every formatted traceback, and
@@ -163,7 +190,7 @@ def _request_structured(
     try:
         resp = litellm.completion(
             model=selected_model,
-            api_base=base_url or os.getenv("CASE_ANALYZER_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+            api_base=selected_base_url,
             api_key=selected_key,
             messages=messages,
             temperature=0,
@@ -172,7 +199,8 @@ def _request_structured(
             response_format=schema,
             **_provider_kwargs(selected_model),
         )
-        return schema.model_validate_json(resp.choices[0].message.content)
+        parsed = schema.model_validate_json(resp.choices[0].message.content)
+        return parsed, _Resolved(selected_model, selected_base_url)
     except ValidationError as exc:
         sanitized = LLMProviderError(
             f"The model response did not match the {schema.__name__} schema: {_validation_summary(exc)}.",
@@ -203,6 +231,12 @@ def _request_structured(
     raise sanitized from None
 
 
+# `analyze_case` and `summarize_case` are where provenance is guaranteed. Both request a
+# model-facing schema — `InvestigationReport` or `CaseSummary`, neither of which carries
+# a `case_analyzer_run` field — and then return the saved-result subclass with the run
+# block attached locally. Doing it here rather than in an optional helper means the CLI,
+# the eval harness, and library callers all get a self-describing result without opting
+# in; `_request_structured` remains the unprovenanced primitive and is private.
 def analyze_case(
     case: CanonicalCase,
     *,
@@ -212,14 +246,36 @@ def analyze_case(
     base_url: str | None = None,
     api_key: str | None = None,
     timeout: float | None = None,
-) -> InvestigationReport:
-    return _request_structured(
+    input_file_sha256: str = "",
+) -> AnalyzedReport:
+    """Request an investigation report, post-check it, and record how it was produced.
+
+    `input_file_sha256` is supplied by callers that read the case from a file; callers
+    that hand over an already-parsed case leave it empty, and the payload hash still
+    identifies the exact input the model saw.
+    """
+    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
+    messages = _messages(_system_prompt(), payload)
+    report, resolved = _request_structured(
         InvestigationReport,
-        build_analysis_messages(case, knowledge_records=knowledge_records, user_input=user_input),
+        messages,
         model=model,
         base_url=base_url,
         api_key=api_key,
         timeout=timeout,
+    )
+    return AnalyzedReport(
+        **report.model_dump(),
+        case_analyzer_run=build_run_metadata(
+            payload=payload,
+            messages=messages,
+            model=resolved.model,
+            base_url=resolved.base_url,
+            input_file_sha256=input_file_sha256,
+            # Checked against the payload that was actually sent, so a citation is
+            # judged against what the model could see rather than the file on disk.
+            checks=RunChecks(ran=True, problems=check_report(report, payload["case"])),
+        ),
     )
 
 
@@ -232,12 +288,30 @@ def summarize_case(
     base_url: str | None = None,
     api_key: str | None = None,
     timeout: float | None = None,
-) -> CaseSummary:
-    return _request_structured(
+    input_file_sha256: str = "",
+) -> AnalyzedSummary:
+    """Request a narrative summary and record how it was produced.
+
+    No post-check runs: a summary has no citations or truncation claims to check, so
+    the run block reports `checks.ran = false` rather than an empty clean result.
+    """
+    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
+    messages = _messages(_summary_prompt(), payload)
+    summary, resolved = _request_structured(
         CaseSummary,
-        build_summary_messages(case, knowledge_records=knowledge_records, user_input=user_input),
+        messages,
         model=model,
         base_url=base_url,
         api_key=api_key,
         timeout=timeout,
+    )
+    return AnalyzedSummary(
+        **summary.model_dump(),
+        case_analyzer_run=build_run_metadata(
+            payload=payload,
+            messages=messages,
+            model=resolved.model,
+            base_url=resolved.base_url,
+            input_file_sha256=input_file_sha256,
+        ),
     )

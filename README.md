@@ -148,6 +148,49 @@ it. A failed check never withholds the report, and stdout stays pure result JSON
 [`examples/citations/README.md`](examples/citations/README.md) records a live run,
 including the spec ambiguity the first run exposed.
 
+The stderr lines are an echo, not the record: the same result is saved in the report
+under `case_analyzer_run.checks`, described next.
+
+### Know what produced a saved report
+
+Every result carries a `case_analyzer_run` block, generated locally and never by the
+model:
+
+```json
+{
+  "verdict": "True Positive",
+  "case_analyzer_run": {
+    "generated_at": "2026-08-19T18:42:07Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "…",
+    "payload_sha256": "…",
+    "input_file_sha256": "…",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {"ran": true, "problems": []}
+  }
+}
+```
+
+A report on its own then answers which model, with which prompt version, said this about
+which exact input. The **payload** hash is the one that identifies the input: the model
+sees the normalized case plus any enrichment, knowledge, and analyst guidance, so two
+runs over one unchanged file can legitimately differ. The input file's hash is recorded
+separately, and is empty when a library caller supplies an already-parsed case.
+
+The endpoint is recorded as host and port only. A base URL can carry credentials in its
+userinfo and a token in its query string; neither is ever written down, and no API key
+appears anywhere in the block.
+
+The block is added by `analyze_case()` and `summarize_case()` themselves, so library
+callers and the eval harness get it without opting in. It is additive — a consumer
+reading `verdict` is unaffected, and reports recorded before this field existed stay
+readable by the same code.
+
 ### Summarize the input case
 
 Add `--summary` to have the model describe what the case contains and stop, instead of
@@ -157,7 +200,8 @@ investigating it:
 uv run case-analyzer examples/splunk-soar.json --format soar --summary
 ```
 
-The run prints `{"summary": "..."}` rather than an `InvestigationReport`, and no verdict,
+The run prints `{"summary": "...", "case_analyzer_run": {...}}` rather than an
+`InvestigationReport`, and no verdict,
 severity, attack chain, IOC list, or remediation is produced. The system prompt asks for
 one to three paragraphs covering what was reported and by which source, when it started
 and last changed, the assets and observables involved, and what analysts already recorded

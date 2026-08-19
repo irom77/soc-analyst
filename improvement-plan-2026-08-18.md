@@ -33,7 +33,42 @@ overlap with existing entries).
 
 ## Tier 1 — small changes, outsized audit value
 
-### 1. Report provenance block
+### 1. Report provenance block — DONE (2026-08-19)
+
+Implemented as `CaseAnalyzerRun` in `schemas.py`, built by the new `provenance.py`, and
+attached by `analyze_case`/`summarize_case` themselves. The two review points below
+decided the shape:
+
+- **Review point 1** (keep it out of the model-facing schema) is resolved by separating
+  the request schema from the saved-result schema, the second option the point offers.
+  `InvestigationReport` and `CaseSummary` remain exactly what goes out as
+  `response_format`; `AnalyzedReport` and `AnalyzedSummary` subclass them and add
+  `case_analyzer_run`. A test asserts the request schemas never grow the field, and
+  another asserts the provider is asked for the base class.
+- **Review point 2** (make the guarantee part of the public path) is resolved by
+  attaching in the public functions rather than in an optional `attach_provenance()`.
+  There is no unprovenanced supported call: `_request_structured` is the raw primitive
+  and is private. The eval harness and library callers were provenanced without any
+  change to their code.
+
+A subclass was chosen over the `{report_metadata, report}` envelope the point sketched,
+because the envelope is not additive: it moves every existing field down a level, so
+recorded examples stop being valid input to the same readers and every downstream
+consumer of the CLI's stdout breaks. The subclass keeps the plan's "purely additive"
+requirement literally true.
+
+Recorded as specified, with two clarifications the implementation forced: the endpoint
+is stored as host and port only, because a base URL can carry credentials in its
+userinfo and a token in its query; and `package_version` records `"unknown"` rather than
+a guess when running from an uninstalled source tree.
+
+This also closed the two pieces deferred from item 4. The post-check now runs inside
+`analyze_case`, so its result is recorded in `case_analyzer_run.checks` — the "flagged
+in the run output" half — and the eval harness picks it up for free. `checks.ran` is
+kept separate from `checks.problems`: a `--summary` run has nothing to check, which must
+not read as a clean result. The benchmark records the checks without scoring them;
+pass/fail stays the manifest's verdict, confidence, and forbidden-content rules.
+
 
 Add an optional `report_metadata` (or `case_analyzer_run`) field to
 `InvestigationReport` and `CaseSummary`, filled in **locally, never by the model**.
@@ -222,18 +257,21 @@ Start with Tier 1: items 1, 3, and 4 are pure additions; item 2 needs only the e
 value decision. Item 8 deserves its own design pass against a real control set before
 any code.
 
-Progress (2026-08-19): items 3 and 4 are done. They were taken first because they were
-the only Tier 1 items with no open review question — items 1 and 2 are blocked on review
-points 1 and 2 (where provenance lives, and which API guarantees it), and Tier 2 item 5
-is blocked on review point 3 (whether pacing waits consume the enrichment budget). Those
-three decisions are the gate on everything remaining.
+Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken first
+because they were the only Tier 1 items with no open review question; item 1 followed
+once review points 1 and 2 were decided, which is recorded under the item itself.
+
+What remains in Tier 1 is item 2, and it is blocked on a decision only the user can
+make: the final `verdict` and `confidence` value sets. Tier 2 item 5 is still blocked on
+review point 3 (whether pacing waits consume the enrichment budget), and item 6 on
+review point 4 (which IDNA standard applies).
 
 ## Review — to be verified before implementation
 
 The plan is close to implementation-ready, but these design details should be
 resolved before work begins:
 
-1. **Keep locally generated metadata out of the model-facing schema.** Adding
+1. **Resolved (2026-08-19).** **Keep locally generated metadata out of the model-facing schema.** Adding
    `report_metadata` directly to `InvestigationReport` or `CaseSummary` while passing
    that schema to `with_structured_output()` would expose the field to the model and
    invite it to populate data that must be generated locally. (The `with_structured_output()`
@@ -241,7 +279,7 @@ resolved before work begins:
    as `response_format=`, so the concern is unchanged and only the API name is stale.) Prefer a locally
    constructed envelope such as `{report_metadata, report}`, or separate
    model-facing response schemas from the final saved-result schemas.
-2. **Make the provenance guarantee part of the public execution path.** An optional
+2. **Resolved (2026-08-19).** **Make the provenance guarantee part of the public execution path.** An optional
    `attach_provenance()` helper does not ensure that library callers use it; they can
    continue calling `analyze_case()` or `summarize_case()` directly. Either make the
    public methods return the assembled result or introduce a higher-level run API and

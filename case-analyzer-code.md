@@ -87,7 +87,8 @@ sequenceDiagram
     Analyzer->>Model: Invoke with structured output schema
     Model-->>Schema: Candidate InvestigationReport
     Schema-->>Analyzer: Validated report
-    Analyzer-->>CLI: InvestigationReport
+    Analyzer->>Analyzer: Post-check citations, attach run provenance
+    Analyzer-->>CLI: AnalyzedReport
     CLI-->>Analyst: Print or write report JSON
 ```
 
@@ -285,11 +286,27 @@ Two fields are the model's account of its own work, and `checks.py` verifies bot
 
 `InvestigationReport.truncated_fields` names each list the model shortened to fit its cap, so a large incident cannot silently arrive as a small report. The check is one-sided by necessity: a claim about a list sitting *below* its cap is a contradiction the response itself exposes, but nothing in a response can prove content was left out, so under-reporting is undetectable here.
 
-Both checks verify form, not support. A citation that resolves proves the model named a field that exists in the payload it was given — never that the field says what the finding claims. Results go to stderr; stdout stays pure result JSON, and a failed check never withholds the report. Persisting the check outcome into the saved result waits on the provenance envelope in `improvement-plan-2026-08-18.md`, as does routing the check through the eval harness, which calls `analyze_case()` directly.
+Both checks verify form, not support. A citation that resolves proves the model named a field that exists in the payload it was given — never that the field says what the finding claims. A failed check never withholds the report.
 
-### Step 8: write the report
+The checks run inside `analyze_case()`, not in the CLI, so every caller gets them — the eval harness and library callers included. The result is recorded under `case_analyzer_run.checks` (Step 8) and echoed on stderr by the CLI, which recomputes nothing, so the warning and the saved record cannot disagree. `checks.ran` is separate from `checks.problems` because an empty problem list is ambiguous alone: a `--summary` run has nothing to check, and a clean report also produces nothing.
 
-The CLI calls `model_dump()`, formats the result as indented JSON, and either prints it or writes it to `--output`. It never changes the input export or sends results back to the originating SOAR platform.
+### Step 8: attach provenance
+
+`analyze_case()` returns `AnalyzedReport` — the model's `InvestigationReport` plus a `case_analyzer_run` block built locally by `provenance.py`. `summarize_case()` returns `AnalyzedSummary` the same way.
+
+The block records the model name, the endpoint host, SHA-256 of the system prompt and of the rendered payload message, an optional SHA-256 of the input file, the package and report-schema versions, a timestamp, convenience flags for enrichment/knowledge/guidance, and the Step 7 check result. A saved report answers "which model, with which prompt, said this about which exact input" without needing the run that produced it.
+
+Three properties are deliberate:
+
+- **The model never sees it.** `InvestigationReport` and `CaseSummary` are the schemas passed as `response_format`; neither declares `case_analyzer_run`. Putting it there would invite the model to author its own provenance. Tests assert the request schemas stay clean.
+- **The public call guarantees it.** `analyze_case()`/`summarize_case()` attach the block themselves rather than offering an optional helper a caller can forget. `_request_structured()` is the unprovenanced primitive and is private.
+- **The saved shape stays additive.** `AnalyzedReport` subclasses `InvestigationReport`, so a consumer reading `verdict` is unaffected and reports recorded before this field existed remain valid input to the same readers.
+
+The payload hash, not the file hash, is what identifies the input: the model sees the normalized case plus any enrichment, knowledge, and analyst guidance, so two runs over one unchanged file can legitimately differ. The file hash is recorded separately and is empty for callers that supply an already-parsed case. The endpoint is recorded as host and port only — a base URL can carry credentials as userinfo and a token in its query, and neither is ever written down.
+
+### Step 9: write the report
+
+The CLI calls `model_dump(mode="json")`, formats the result as indented JSON, and either prints it or writes it to `--output`. It never changes the input export or sends results back to the originating SOAR platform.
 
 ## Dry-run path
 
@@ -382,6 +399,9 @@ with open("case.json", encoding="utf-8") as source:
 
 report = analyze_case(case)
 print(report.model_dump_json(indent=2))
+
+# Provenance is attached by the call, not by the caller.
+print(report.case_analyzer_run.model, report.case_analyzer_run.payload_sha256)
 ```
 
 This interface makes it possible to add an HTTP endpoint, queue consumer, notebook, or another worker without putting those concerns inside the analysis module.

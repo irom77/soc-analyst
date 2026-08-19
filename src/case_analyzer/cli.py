@@ -16,9 +16,9 @@ from .analyzer import (
     build_summary_messages,
     summarize_case,
 )
-from .checks import check_report
 from .enrichment import enrich_case
-from .schemas import InvestigationReport
+from .provenance import sha256_file
+from .schemas import RunChecks
 
 
 def _json_file(path: Path, max_bytes: int = 0):
@@ -43,7 +43,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Analyze an exported security case with an LLM.")
     parser.add_argument("input", type=Path, help="Case export JSON file")
     parser.add_argument("--format", choices=("auto", "generic", "soar"), default="auto")
-    parser.add_argument("--output", type=Path, help="Write the InvestigationReport JSON to this file")
+    parser.add_argument(
+        "--output", type=Path, help="Write the result JSON, including its run provenance, to this file"
+    )
     parser.add_argument("--knowledge", type=Path, help="Optional JSON array of knowledge records")
     parser.add_argument("--user-input", default="", help="Additional analyst guidance")
     parser.add_argument("--model", help="Model name (or set CASE_ANALYZER_MODEL)")
@@ -58,8 +60,9 @@ def _parser() -> argparse.ArgumentParser:
         "--summary",
         action="store_true",
         help=(
-            "Ask the LLM to describe the input case in prose and stop. Prints {\"summary\": ...} "
-            "instead of an InvestigationReport; no verdict, severity, or remediation is produced."
+            "Ask the LLM to describe the input case in prose and stop. Prints a summary plus its "
+            "run provenance instead of an InvestigationReport; no verdict, severity, or "
+            "remediation is produced."
         ),
     )
     parser.add_argument(
@@ -159,10 +162,15 @@ def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = Fal
     _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
 
 
-def _report_checks(report: InvestigationReport, case: dict) -> None:
-    """Surface post-check results on stderr, leaving stdout as pure result JSON."""
-    problems = check_report(report, case)
-    if not problems:
+def _report_checks(checks: RunChecks) -> None:
+    """Echo the post-check results on stderr; they are already in the saved result.
+
+    `analyze_case` runs the checks and records them under `case_analyzer_run.checks`, so
+    this only makes them visible to someone watching the terminal. Nothing is recomputed
+    here, which keeps the warning and the saved record from being able to disagree.
+    """
+    problems = checks.problems
+    if not checks.ran or not problems:
         return
     print(
         f"case-analyzer: report check: {len(problems)} problem(s) found. The report is still "
@@ -258,15 +266,14 @@ def main(argv=None) -> int:
                 base_url=args.base_url,
                 api_key=args.api_key,
                 timeout=args.llm_timeout,
+                # Hashed from the file as it sits on disk, before normalization, so a
+                # saved report can be tied back to the export it came from.
+                input_file_sha256=sha256_file(args.input),
             )
-            if isinstance(response, InvestigationReport):
-                # Rebuilt rather than threaded through: `build_analysis_payload` is pure,
-                # so this is the same `case` object the request carried.
-                payload = build_analysis_payload(
-                    case, knowledge_records=knowledge, user_input=args.user_input
-                )
-                _report_checks(response, payload["case"])
-            result = response.model_dump()
+            _report_checks(response.case_analyzer_run.checks)
+            # `mode="json"` renders the run timestamp; every other field is already
+            # JSON-native.
+            result = response.model_dump(mode="json")
         rendered = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:
             args.output.write_text(rendered + "\n", encoding="utf-8")

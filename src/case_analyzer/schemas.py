@@ -189,3 +189,73 @@ class InvestigationReport(BaseModel):
             "material content was left out, never to note that a list is merely short."
         ),
     )
+
+
+# Bumped when the saved-result shape changes in a way a consumer must notice. Recorded
+# in every run block so an archived report identifies its own layout.
+REPORT_SCHEMA_VERSION = "1"
+
+
+class RunChecks(BaseModel):
+    """Outcome of the local post-checks in `checks.py`.
+
+    `ran` and `problems` are separate because an empty problem list is ambiguous on its
+    own: a summary run has no report to check, and a clean report also produces nothing.
+    Only the pair distinguishes "checked and clean" from "not checked".
+    """
+
+    ran: bool = False
+    problems: list[str] = Field(default_factory=list)
+
+
+class CaseAnalyzerRun(BaseModel):
+    """What produced a saved result: which model, which exact input, which code.
+
+    Generated locally and never by the model. It is deliberately absent from
+    `InvestigationReport` and `CaseSummary`, which are the schemas handed to the
+    provider as `response_format`; putting it there would invite the model to fill in
+    its own provenance. `AnalyzedReport` and `AnalyzedSummary` below add it afterwards.
+    """
+
+    generated_at: datetime
+    package_version: str
+    report_schema_version: str = REPORT_SCHEMA_VERSION
+    model: str
+    # Host (with port when non-default) of the configured endpoint. Never the full URL:
+    # a base URL can carry credentials in its userinfo, and a path or query can carry a
+    # deployment token.
+    endpoint_host: str = ""
+    # The exact bytes the provider was asked to reason over. The rendered payload covers
+    # the normalized case plus any enrichment, knowledge, and analyst guidance, which is
+    # why the input file's own hash cannot stand in for it.
+    system_prompt_sha256: str
+    payload_sha256: str
+    # Empty when the caller supplied an already-parsed case rather than a file.
+    input_file_sha256: str = ""
+    # Convenience flags for reading a result at a glance. The payload hash, not these,
+    # is what identifies the input.
+    has_enrichment: bool = False
+    has_knowledge: bool = False
+    has_user_input: bool = False
+    checks: RunChecks = Field(default_factory=RunChecks)
+
+    @field_serializer("generated_at")
+    def _serialize_generated_at(self, value: datetime) -> str:
+        return _isoformat_z(value)
+
+
+class AnalyzedReport(InvestigationReport):
+    """The saved result: everything the model returned, plus how it was produced.
+
+    A subclass rather than a wrapper envelope, so the saved shape stays additive —
+    a consumer reading `verdict` keeps working, and reports recorded before this
+    field existed remain valid input to the same readers.
+    """
+
+    case_analyzer_run: CaseAnalyzerRun
+
+
+class AnalyzedSummary(CaseSummary):
+    """The saved result of a `--summary` run, provenanced the same way."""
+
+    case_analyzer_run: CaseAnalyzerRun

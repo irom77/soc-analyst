@@ -13,10 +13,11 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
 from the 2026-08-18 limitations review. Its eval-harness prerequisite,
-prompt-injection item, and Tier 1 items 3 and 4 are done (see "Completed" below); the
-remaining tiers — report provenance and enum verdicts, enrichment caching, and the
-dedicated audit mode — are open there and not duplicated here. Three design questions in
-that plan's review section gate the rest of it.
+prompt-injection item, and Tier 1 items 1, 3, and 4 are done (see "Completed" below);
+the remaining work — enum verdicts, enrichment caching and IDN handling, and the
+dedicated audit mode — is open there and not duplicated here. Two design questions in
+that plan's review section still gate part of it, and enum verdicts need a decision on
+the final value sets.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
 `uv run ruff check src tests` (114 offline tests; no credentials or network needed).
@@ -46,6 +47,26 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 ## Completed (2026-08-19 report self-description)
 
+- [x] Tier 1 item 1 — report provenance. `analyze_case()` and `summarize_case()` now
+  return `AnalyzedReport`/`AnalyzedSummary`: the model's own schema plus a
+  `case_analyzer_run` block built locally by the new `provenance.py`. It records the
+  model, endpoint host, SHA-256 of the system prompt and rendered payload, an optional
+  input-file hash, package and report-schema versions, a timestamp, presence flags, and
+  the post-check result.
+
+  The plan's two open review points were the design, and both were decided here.
+  Provenance is kept out of the model-facing schema by splitting request schema from
+  saved-result schema — `InvestigationReport`/`CaseSummary` are still exactly what goes
+  out as `response_format`, and the saved types subclass them — rather than by an
+  envelope, which would have moved every existing field down a level and broken both
+  recorded examples and any consumer of the CLI's stdout. The guarantee lives on the
+  public calls rather than an optional `attach_provenance()` helper, so there is no
+  supported unprovenanced path; `_request_structured` is private.
+
+  The endpoint is stored as host and port only: a base URL can carry credentials in its
+  userinfo and a token in its query, and a test asserts no part of a key reaches the
+  block.
+
 - [x] Tier 1 item 4 — evidence citations by JSON path. `EvidenceFinding.source_paths`
   cites the case fields a finding was read from, using the grammar enrichment already
   emits. `checks.resolve_case_path` verifies each one against the rendered payload,
@@ -67,12 +88,9 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   below its cap; under-reporting is not detectable from a response and is not claimed
   to be.
 
-  Not yet delivered, and blocked rather than skipped: the plan asks for unresolved
-  citations to be flagged *in the run output* as well as on stderr, and for the check to
-  cover the eval harness, which calls `analyze_case()` directly. Both need a result
-  envelope that does not exist yet — putting the outcome on `InvestigationReport` would
-  make it model-facing, which the plan's own review rules out. They land with Tier 1
-  items 1–2.
+  Both pieces deferred here were delivered with Tier 1 item 1 below: the check result is
+  recorded in `case_analyzer_run.checks` as well as echoed on stderr, and it now runs
+  inside `analyze_case()`, so the eval harness gets it without change.
 
   One observation worth watching rather than acting on: in the recorded run
   `truncated_fields` was empty while `evidence_findings`, `remediations` and `unknowns`
@@ -113,7 +131,7 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   plus an explicit `model_validate_json` replaces `with_structured_output`; the
   except-ladder is rebuilt on `litellm.exceptions`. `--explain` message construction is
   byte-identical to the pre-migration capture (377 lines diffed), and `--dry-run` output
-  is unchanged. 96 tests pass and `ruff check src tests` is clean.
+  is unchanged. 137 tests pass and `ruff check src tests` is clean.
 
   Two corrections to the plan, both found during execution:
 

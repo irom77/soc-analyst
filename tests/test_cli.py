@@ -1,15 +1,35 @@
+import hashlib
 import io
 import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from case_analyzer import cli, explain_cli
 from case_analyzer.analyzer import LLMProviderError
-from case_analyzer.schemas import CaseSummary, EvidenceFinding, InvestigationReport
+from case_analyzer.schemas import (
+    AnalyzedReport,
+    AnalyzedSummary,
+    CaseAnalyzerRun,
+    EvidenceFinding,
+    RunChecks,
+)
+
+
+def _run_block(checks: RunChecks | None = None) -> CaseAnalyzerRun:
+    """A stand-in for what `build_run_metadata` attaches; contents are not under test here."""
+    return CaseAnalyzerRun(
+        generated_at=datetime(2026, 8, 19, 12, 0, tzinfo=UTC),
+        package_version="0.1.0",
+        model="test-model",
+        system_prompt_sha256="0" * 64,
+        payload_sha256="1" * 64,
+        checks=checks or RunChecks(ran=True),
+    )
 
 
 class ExplainCliTests(unittest.TestCase):
@@ -68,8 +88,8 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual("Example", json.loads(target.read_text(encoding="utf-8"))["case"]["title"])
 
     @staticmethod
-    def _report_citing(path: str) -> InvestigationReport:
-        return InvestigationReport(
+    def _report_citing(path: str, checks: RunChecks | None = None) -> AnalyzedReport:
+        return AnalyzedReport(
             verdict="Suspicious",
             severity="medium",
             impact="none",
@@ -86,12 +106,16 @@ class ExplainCliTests(unittest.TestCase):
                     source_paths=[path],
                 )
             ],
+            case_analyzer_run=_run_block(checks),
         )
 
     @patch("case_analyzer.cli.analyze_case")
-    def test_an_unresolvable_citation_warns_without_withholding_the_report(self, analyze_case):
+    def test_a_recorded_check_problem_warns_without_withholding_the_report(self, analyze_case):
         """The report is the user's; a self-description defect is stderr's problem."""
-        analyze_case.return_value = self._report_citing("artifacts[0].cef.invented")
+        analyze_case.return_value = self._report_citing(
+            "artifacts[0].cef.invented",
+            RunChecks(ran=True, problems=["'Beaconing' cites 'artifacts[0].cef.invented'"]),
+        )
         output, errors = io.StringIO(), io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
             status = cli.main([str(self.case_path)])
@@ -103,7 +127,7 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual("Suspicious", json.loads(output.getvalue())["verdict"])
 
     @patch("case_analyzer.cli.analyze_case")
-    def test_a_resolvable_citation_produces_no_warning(self, analyze_case):
+    def test_a_clean_check_produces_no_warning_and_still_lands_in_the_result(self, analyze_case):
         analyze_case.return_value = self._report_citing("title")
         output, errors = io.StringIO(), io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
@@ -111,18 +135,35 @@ class ExplainCliTests(unittest.TestCase):
 
         self.assertEqual(0, status)
         self.assertNotIn("report check", errors.getvalue())
+        # Silence on stderr is not the record; the saved result says the check ran.
+        run = json.loads(output.getvalue())["case_analyzer_run"]
+        self.assertEqual({"ran": True, "problems": []}, run["checks"])
+
+    @patch("case_analyzer.cli.analyze_case")
+    def test_the_input_file_hash_reaches_the_analyzer(self, analyze_case):
+        analyze_case.return_value = self._report_citing("title")
+        with redirect_stdout(io.StringIO()):
+            cli.main([str(self.case_path)])
+
+        expected = hashlib.sha256(self.case_path.read_bytes()).hexdigest()
+        self.assertEqual(expected, analyze_case.call_args.kwargs["input_file_sha256"])
 
     @patch("case_analyzer.cli.analyze_case")
     @patch("case_analyzer.cli.summarize_case")
     def test_summary_returns_a_digest_and_never_requests_a_report(self, summarize_case, analyze_case):
-        summarize_case.return_value = CaseSummary(summary="One paragraph about the case.")
+        summarize_case.return_value = AnalyzedSummary(
+            summary="One paragraph about the case.", case_analyzer_run=_run_block(RunChecks())
+        )
         output = io.StringIO()
         with redirect_stdout(output):
             status = cli.main([str(self.case_path), "--summary"])
 
         self.assertEqual(0, status)
         analyze_case.assert_not_called()
-        self.assertEqual({"summary": "One paragraph about the case."}, json.loads(output.getvalue()))
+        result = json.loads(output.getvalue())
+        self.assertEqual("One paragraph about the case.", result["summary"])
+        # A summary has nothing to check, and says so rather than looking clean.
+        self.assertFalse(result["case_analyzer_run"]["checks"]["ran"])
 
     @patch("case_analyzer.cli.summarize_case")
     def test_summary_dry_run_previews_the_summary_prompt_without_calling_the_llm(self, summarize_case):

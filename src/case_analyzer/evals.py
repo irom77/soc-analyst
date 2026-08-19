@@ -149,7 +149,11 @@ def run_benchmark(
     """Run every entry `samples` times through `analyze_fn` and collect check results.
 
     `analyze_fn` receives the manifest entry and the normalized case and must return an
-    `InvestigationReport`. A provider or configuration error stops that entry's
+    `InvestigationReport` — in practice the provenanced `AnalyzedReport` subclass, so
+    each saved result records the model and payload hash it came from, and the local
+    post-check result under `case_analyzer_run.checks`. Those checks are recorded, not
+    scored: benchmark pass/fail stays the manifest's verdict, confidence, and
+    forbidden-content rules. A provider or configuration error stops that entry's
     remaining samples but not the rest of the benchmark.
     """
     results: list[CaseResult] = []
