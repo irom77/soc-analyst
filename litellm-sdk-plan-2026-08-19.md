@@ -172,8 +172,26 @@ behavior is broken. Option B avoids the trap because `litellm.completion` takes
 5. **Model naming** — `CASE_ANALYZER_MODEL` gains provider-prefix meaning. In scope
    that means `gemini/gemini-2.5-flash` for the native API; the prefix mechanism is
    general, so other providers would work the same way but are explicitly not verified.
-   A bare name still routes to OpenAI, so existing configurations keep working.
-   Document the prefix in `.env.example`, `README.md`, and `case-analyzer-code.md:247-249`.
+   A bare name does **not** reliably route to OpenAI — see finding 5 below. To keep
+   existing configurations working, `_request_structured` routes on an explicit,
+   maintained allowlist of native prefixes rather than on the presence of a slash:
+
+       _NATIVE_PREFIXES = ("gemini/",)   # extend deliberately, one verified provider at a time
+
+       if selected_model.startswith(_NATIVE_PREFIXES):
+           provider_kwargs = {}                              # let LiteLLM route
+       else:
+           provider_kwargs = {"custom_llm_provider": "openai"}
+
+   Default-to-OpenAI is the safe direction: an endpoint may serve opaque identifiers
+   that themselves contain slashes, and only a prefix this project has verified should
+   ever divert traffic away from `api_base`. `openai/…` remains a documented escape
+   hatch for a collision — it falls into the `else` branch, and LiteLLM strips only the
+   leading segment, so `openai/gemini/x` reaches the endpoint as `gemini/x` (verified).
+   Document the prefix in `.env.example`, `README.md`, `FAQ.md`, and
+   `case-analyzer-code.md:247-249`. The `FAQ.md` entry belongs with this step rather
+   than earlier: until the migration lands, bare names work and the entry would be
+   wrong.
    `CASE_ANALYZER_BASE_URL` maps to `api_base` and stays optional — passing `None`
    is tolerated, verified.
 
@@ -241,6 +259,18 @@ behavior is broken. Option B avoids the trap because `litellm.completion` takes
   message envelope changes shape. Record results in a new file under `evals/results/`
   rather than replacing the recorded baseline.
 - Confirm exit codes 3 / 5 / 6 still come back from the three failure injections above
+- Routing regression, at the application boundary. Patch `litellm.completion` and
+  assert what `_request_structured` actually passes — the rule is our own branching
+  logic, so a mock is the right instrument here, unlike the timeout case in finding 2
+  where the mock would have been asserting a *forwarded parameter name*:
+  - a legacy bare name (`gemini-2.5-flash`) receives `custom_llm_provider="openai"`;
+  - `gemini/gemini-2.5-flash` receives no override;
+  - a legacy slash-containing opaque name (`meta-llama/Llama-3`) receives the override
+    and reaches `completion()` with its model string unmodified.
+- Keep offline `litellm.get_llm_provider` checks as complementary canaries on LiteLLM's
+  side of the contract: bare names plus `meta-llama/Llama-3` resolve to `openai` under
+  the override, `gemini/gemini-2.5-flash` to `gemini`. The existing 89 tests can catch
+  neither — they mock `ChatOpenAI` and never exercise provider selection.
 
 ## Review findings (2026-08-19)
 
@@ -318,6 +348,84 @@ entirely. All required names exist. Note the rename: `litellm.exceptions.Timeout
   `.content` attribute assertions — lines 41, 42, 51, 52, 53, 54, 73, 157, 158 — all of
   which become dictionary access. Lines 157–158 assert the injection-hardening text, so
   they matter beyond mechanical retargeting.
+
+### 5. Bare model names do not route to OpenAI — found by probe, blocking
+
+The first draft claimed "a bare name still routes to OpenAI, so existing configurations
+keep working." That is false. `ChatOpenAI` treats the model name as an opaque string
+forwarded to `base_url`; LiteLLM treats it as a **routing key** that selects the
+provider handler *before* `api_base` is applied. Probed with
+`litellm.get_llm_provider`, offline:
+
+| `CASE_ANALYZER_MODEL` | Resolves to | Effect on an OpenAI-compatible endpoint |
+| --- | --- | --- |
+| `gpt-4o` | `openai` | works unchanged |
+| `gemini-2.5-flash` | **`vertex_ai`** | silently misrouted to the Vertex handler |
+| `gemini-native` | *error* | `BadRequestError: LLM Provider NOT provided` |
+| `test-model` | *error* | same |
+| `llama3.2` | *error* | same |
+
+`api_base` is carried through in every case but never influences the routing decision,
+which is what makes `gemini-2.5-flash` the dangerous row: it fails silently rather than
+loudly. All three of the project's own configurations are affected — the live `.env`
+value `gemini-2.5-flash`, the proxy alias `gemini-native` in
+`examples/litellm-proxy/README.md`, and the fixture `test-model` at
+`tests/test_analyzer.py:20`.
+
+**Resolution:** requiring users to write `openai/gemini-2.5-flash` works but breaks
+every existing config and doc. Apply the allowlist rule in step 5 instead.
+
+### 5a. The first draft of the rule was too broad — accepted (review 3)
+
+The rule as first written — "no `/` means force OpenAI, otherwise route on the prefix" —
+does not preserve the existing configuration contract. `ChatOpenAI` forwards *any* model
+string unchanged, including opaque identifiers that contain slashes, and OpenAI-compatible
+gateways routinely use them. Probed:
+
+| Model on an OpenAI-compatible endpoint | Under "any slash" | Failure mode |
+| --- | --- | --- |
+| `meta-llama/Llama-3` | `BadRequestError` | hard failure |
+| `Qwen/Qwen2.5-72B` | `BadRequestError` | hard failure |
+| `accounts/fireworks/models/llama-v3` | `BadRequestError` | hard failure |
+| `anthropic/claude-3` | provider `anthropic` | **silent misroute** |
+
+The last row is not hypothetical: OpenRouter-style gateways are OpenAI-compatible and
+their model IDs (`anthropic/claude-3.5-sonnet`, `meta-llama/llama-3`) collide head-on
+with LiteLLM provider prefixes. So the earlier "zero config break" claim was established
+only for the three sampled bare names, not for the contract generally — the reviewer is
+right, and the silent-misroute class is wider than first described.
+
+**Resolution:** route on a maintained allowlist of verified native prefixes, currently
+`("gemini/",)`, and default everything else to the OpenAI-compatible path. Verified that
+the forced override preserves the model string exactly — `meta-llama/Llama-3`,
+`Qwen/Qwen2.5-72B`, and `accounts/fireworks/models/llama-v3` all reach the endpoint
+unmodified — and that `openai/…` still works as an escape hatch inside that branch,
+because LiteLLM strips only the leading segment: `openai/gemini/x` → `gemini/x`.
+
+### 5b. Structured-output wire format — claim was unevidenced, now measured (review 3)
+
+The first draft asserted "the endpoint sees the same request shape" on the strength of
+both stacks selecting JSON Schema mode. That is semantic continuity, not wire equality,
+and the reviewer was right to reject it. Rather than soften the wording, the bodies were
+captured: a local recording server, the real `InvestigationReport` schema, identical
+messages, both stacks pointed at it offline.
+
+Measured — the two request bodies are identical except for one field:
+
+| Field | LangChain | LiteLLM |
+| --- | --- | --- |
+| `response_format.type` | `json_schema` | `json_schema` |
+| `response_format.json_schema.name` | `InvestigationReport` | `InvestigationReport` |
+| `response_format.json_schema.strict` | `True` | `True` |
+| `response_format.json_schema.schema` | *byte-identical* | *byte-identical* |
+| `stream` | `False` | **absent** |
+
+So the envelope, schema name, strictness, and the serialized schema itself all match;
+LangChain additionally sends an explicit `"stream": false` where LiteLLM omits the key.
+Both are valid OpenAI requests and non-streaming is the default, but the claim is now
+stated as what was measured rather than as inferred equality. The live comparison and
+eval rerun in **Verification** remain required regardless — they cover response
+handling, which this probe does not touch.
 
 ### Sequencing against the improvement plan — accepted
 

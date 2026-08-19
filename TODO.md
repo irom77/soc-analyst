@@ -87,6 +87,26 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   `examples/litellm-proxy/` stay as a documented alternative for centralized-key or
   shared deployments.
 
+- [ ] Preserve bare model names across the SDK migration. LiteLLM treats
+  `CASE_ANALYZER_MODEL` as a **routing key**, not the opaque string `ChatOpenAI`
+  forwards to `base_url`, and `api_base` never influences the choice. Probed offline
+  with `litellm.get_llm_provider`: `gemini-2.5-flash` — the live `.env` value —
+  resolves to `vertex_ai`, so it is silently misrouted rather than failing loudly;
+  `gemini-native` (the proxy alias) and `test-model` (`tests/test_analyzer.py:20`)
+  raise `BadRequestError: LLM Provider NOT provided`; only names in LiteLLM's OpenAI
+  map, such as `gpt-4o`, keep working. Slash-containing opaque identifiers break too:
+  `meta-llama/Llama-3` and `Qwen/Qwen2.5-72B` raise `BadRequestError`, and an
+  OpenRouter-style `anthropic/claude-3` is silently misrouted to Anthropic. Fix in
+  `_request_structured`: route on a maintained allowlist of verified native prefixes —
+  currently `("gemini/",)` — and default everything else to `custom_llm_provider="openai"`,
+  which preserves the model string exactly and leaves `openai/…` working as an escape
+  hatch. Assert the rule at the application boundary by patching `litellm.completion`
+  (legacy bare name gets the override, `gemini/…` does not, `meta-llama/Llama-3` gets it
+  with the string unmodified), keeping `get_llm_provider` checks as LiteLLM-side
+  canaries; the existing suite mocks `ChatOpenAI` and cannot catch a misroute. Document the prefix in `FAQ.md` **with this change**, not before: until it
+  lands, bare names work and the entry would be wrong. See
+  [`litellm-sdk-plan-2026-08-19.md`](litellm-sdk-plan-2026-08-19.md) finding 5.
+
 - [ ] Add an offline regression test for the timeout forwarding contract. Enter through
   the application boundary — `_request_structured`, not `litellm.completion` — because
   exit 5 is produced by our translation layer, and entering there also exercises the new
