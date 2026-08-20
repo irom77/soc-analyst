@@ -16,7 +16,9 @@ from the 2026-08-18 limitations review. Its eval-harness prerequisite, prompt-in
 item, and all of Tier 1 and Tier 2 are done (see "Completed" below), as is Tier 3's
 prerequisite item 7 (full-URL and email lookups); the remaining work — the dedicated
 audit mode, then the Tier 4 structural items — is open there and not duplicated here.
-Every design question in that plan's review section is now resolved.
+Every design question in that plan's review section is now resolved. The benchmark was
+re-run on the post-Tier-2 build on 2026-08-20 and all six cases pass; see
+[`evals/post-tier-2-2026-08-20.md`](evals/post-tier-2-2026-08-20.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
 `uv run ruff check src tests` (198 offline tests; no credentials or network needed).

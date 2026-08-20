@@ -426,6 +426,14 @@ point is resolved. Item 7 was sequenced after item 5 for a reason that held up: 
 and pacing absorbed a fourth provider without a change, so URLhaus multiplied neither the
 request volume nor the machinery.
 
+Benchmark re-run (2026-08-20): the tripwire was fired before starting Tier 3, because four
+of the six commits since the last recorded run change what the model is asked to produce
+(citations, truncation reporting, the verdict/confidence enums, and sanitized errors). All
+six cases pass with no regression, and the provenance, citation, and truncation fields are
+confirmed populated on live output for the first time. Recorded in
+[`evals/post-tier-2-2026-08-20.md`](evals/post-tier-2-2026-08-20.md). Note that the harness
+never contacts enrichment providers, so items 5, 6, and 7 remain verified offline only.
+
 What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
 real control set before any code. Tier 4 items 10 and 11 remain propose-and-discuss; the
 plan's own advice on 11 is to wait until someone actually hits the input limit. Outside

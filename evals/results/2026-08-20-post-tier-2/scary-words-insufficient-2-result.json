@@ -1,0 +1,107 @@
+{
+  "verdict": "Insufficient Data",
+  "severity": "Low",
+  "impact": "Low",
+  "priority": "Low",
+  "confidence": "Low",
+  "digest": "A user reported a slow laptop, and an incomplete DNS query for 'cdn.example.invalid' was observed from 'LAPTOP-77'. There is insufficient technical evidence to confirm any malicious activity or command-and-control communication.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "LAPTOP-77"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "User Reported Slow Laptop",
+      "finding_type": "User Report",
+      "subject": "User",
+      "evidence": "A user reported a slow laptop and said it might be hacked.",
+      "conclusion": "This is a subjective user report and not technical evidence of compromise. It serves as an initial trigger for investigation.",
+      "source_paths": [
+        "comments[0].content",
+        "source_data.notes[0].content"
+      ]
+    },
+    {
+      "title": "Incomplete DNS Query Observation",
+      "finding_type": "Network Activity",
+      "subject": "LAPTOP-77",
+      "evidence": "A DNS query for 'cdn.example.invalid' was observed originating from 'LAPTOP-77'. The observation explicitly lacks a response address, timestamp, process attribution, reputation result, packet data, or corroborating events. The 'C2' label was derived from the detection rule name.",
+      "conclusion": "While a DNS query was observed, the lack of critical contextual information prevents confirmation of malicious intent or actual command-and-control activity. The 'C2' classification is unverified by evidence.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.sourceHostName",
+        "source_data.child_containers[0].artifacts[0].cef.query",
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Lack of Endpoint Telemetry",
+      "finding_type": "Investigation Gap",
+      "subject": "LAPTOP-77",
+      "evidence": "No endpoint telemetry has yet been collected for LAPTOP-77.",
+      "conclusion": "The absence of endpoint telemetry significantly hinders the ability to confirm the user's report, attribute the DNS query to a process, or determine the overall compromise status of the asset.",
+      "source_paths": [
+        "comments[0].content",
+        "source_data.notes[0].content"
+      ]
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Command and Control",
+      "description": "A DNS query for 'cdn.example.invalid' was observed, which could potentially indicate C2 communication, but this remains unconfirmed due to incomplete data."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T09:30:00Z",
+      "attack_behavior": "Case created based on user report and incomplete DNS observation.",
+      "evidence_field": "created_at"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "cdn.example.invalid",
+      "context": "Observed in an incomplete DNS query from LAPTOP-77, potentially C2 but unconfirmed."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Data Collection",
+      "description": "Collect full endpoint telemetry (process activity, network connections, system logs) from LAPTOP-77 to investigate the user's report and the observed DNS query.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Investigation",
+      "description": "Investigate the purpose and context of the DNS query for 'cdn.example.invalid' and its reputation.",
+      "priority": "High"
+    }
+  ],
+  "unknowns": [
+    "Whether 'cdn.example.invalid' is a malicious domain or part of legitimate activity.",
+    "The specific process responsible for the DNS query on LAPTOP-77.",
+    "The success or failure of the DNS query (i.e., if a response was received).",
+    "The actual compromise status of LAPTOP-77.",
+    "The true nature and cause of the user's 'slow laptop' report."
+  ],
+  "truncated_fields": [],
+  "case_analyzer_run": {
+    "generated_at": "2026-08-20T11:07:33.816945Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "cf4c5fd563d303572a1e23a012d8982bdf10515ac3a8d5bec5c9cc4ceb51365b",
+    "payload_sha256": "568f827750d89f77944b2e2736a01abf6607f44175dced013445542f9bd20054",
+    "input_file_sha256": "",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {
+      "ran": true,
+      "problems": []
+    }
+  }
+}
