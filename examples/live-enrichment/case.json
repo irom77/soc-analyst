@@ -5,10 +5,13 @@
   "container_type": "default",
   "status": "new",
   "severity": "low",
-  "description": "Synthetic case built solely to exercise enrichment against live providers. Every observable is a public, non-sensitive value chosen for what it tests; none came from a real investigation.",
+  "description": "Synthetic case built solely to exercise enrichment against live providers. Every observable is public and chosen for what it tests; none came from a real investigation. The one malicious URL is a public URLhaus listing, included as a string to look up and never fetched.",
   "create_time": "2026-08-20T12:00:00Z",
   "update_time": "2026-08-20T12:00:00Z",
-  "tags": ["synthetic", "enrichment-verification"],
+  "tags": [
+    "synthetic",
+    "enrichment-verification"
+  ],
   "child_containers": [
     {
       "id": 9102,
@@ -25,8 +28,12 @@
             "deviceDnsDomain": "faß.de"
           },
           "cef_types": {
-            "destinationDnsDomain": ["domain"],
-            "deviceDnsDomain": ["domain"]
+            "destinationDnsDomain": [
+              "domain"
+            ],
+            "deviceDnsDomain": [
+              "domain"
+            ]
           },
           "notes": [
             {
@@ -43,9 +50,31 @@
             "deviceDnsDomain": "München.DE"
           },
           "cef_types": {
-            "destinationDnsDomain": ["domain"],
-            "deviceDnsDomain": ["domain"]
+            "destinationDnsDomain": [
+              "domain"
+            ],
+            "deviceDnsDomain": [
+              "domain"
+            ]
           }
+        },
+        {
+          "name": "URL recorded in URLhaus, written with an uppercase scheme",
+          "type": "network",
+          "cef": {
+            "requestURL": "HTTP://42.178.23.194:35659/bin.sh"
+          },
+          "cef_types": {
+            "requestURL": [
+              "url"
+            ]
+          },
+          "notes": [
+            {
+              "title": "Why this",
+              "content": "A malware-distribution URL listed publicly by URLhaus, taken from its recent-URLs feed on 2026-08-20. Nothing here ever fetches the URL; only the string is sent to URLhaus to be asked about. Writing the scheme in uppercase checks that normalization produces a form URLhaus still matches, and the non-default port 35659 must survive it. Its host is a separate observable, so the same field also exercises RDAP and AbuseIPDB."
+            }
+          ]
         },
         {
           "name": "URL carrying credentials, an implied port and mixed case",
@@ -54,7 +83,9 @@
             "requestURL": "HTTPS://Admin:hunter2@Bücher.DE:443/Katalog/Suche.php?q=1#frag"
           },
           "cef_types": {
-            "requestURL": ["url"]
+            "requestURL": [
+              "url"
+            ]
           },
           "notes": [
             {
@@ -70,7 +101,9 @@
             "sourceUserName": "Kontakt@BÜCHER.de"
           },
           "cef_types": {
-            "sourceUserName": ["email"]
+            "sourceUserName": [
+              "email"
+            ]
           },
           "notes": [
             {
@@ -86,7 +119,9 @@
             "destinationAddress": "8.8.8.8"
           },
           "cef_types": {
-            "destinationAddress": ["ip"]
+            "destinationAddress": [
+              "ip"
+            ]
           },
           "notes": [
             {
@@ -102,7 +137,9 @@
             "sourceAddress": "10.42.0.7"
           },
           "cef_types": {
-            "sourceAddress": ["ip"]
+            "sourceAddress": [
+              "ip"
+            ]
           },
           "notes": [
             {

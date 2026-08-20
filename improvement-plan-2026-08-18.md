@@ -436,9 +436,12 @@ contacts enrichment providers, so items 5, 6, and 7 were checked separately the 
 against live DNS, RDAP, and AbuseIPDB
 ([`examples/live-enrichment/`](examples/live-enrichment/README.md)): item 6's UTS #46
 encoding is confirmed by a test that could have failed, item 5's cache is confirmed, and
-the run exposed a credential leak in `unicode_values` that is now fixed. Item 5's pacing
-and item 7's URLhaus and VirusTotal request shapes still need keys that are not
-configured.
+the run exposed a credential leak in `unicode_values` that is now fixed. URLhaus was then
+confirmed against the real API: all four outcomes return HTTP 200 and only `query_status`
+separates them, so the implementation needed no change, and one field produced a URLhaus
+`malware_download` hit alongside an AbuseIPDB score of 3 for its host — the case for
+treating a URL and its host as separate observables, observed rather than argued. Item 5's
+pacer and item 7's VirusTotal URL identifier still need a key that is not configured.
 
 What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
 real control set before any code. Tier 4 items 10 and 11 remain propose-and-discuss; the

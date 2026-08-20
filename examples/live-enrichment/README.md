@@ -2,8 +2,8 @@
 
 The first run of the enrichment stack against **real providers**. Items 5, 6, and 7 had
 until now been verified only offline, against fakes — including, for item 7, a URLhaus
-response shape that was my own fixture agreeing with itself. This run closes part of
-that gap and is explicit about the part it does not.
+response shape that was my own fixture agreeing with itself. This closes that gap for
+items 6 and 7 and for item 5's cache, and is explicit about the one part it does not.
 
 It found one real defect, described below.
 
@@ -23,8 +23,8 @@ third party, so a real export would have leaked customer IOCs; each value here i
 and chosen for what it tests. The recorded enrichment block is
 [`enrichment-2026-08-20.json`](enrichment-2026-08-20.json).
 
-Providers reached: Cloudflare DNS, the RDAP registries, and AbuseIPDB.
-**VirusTotal and URLhaus were not contacted** — see "What this did not verify".
+Providers reached: Cloudflare DNS, the RDAP registries, AbuseIPDB, and URLhaus.
+**VirusTotal was not contacted** — `VIRUSTOTAL_API_KEY` is commented out in `.env`.
 
 ## Item 6 — UTS #46 confirmed, by a test that could have failed
 
@@ -60,19 +60,51 @@ report.
 
 **Pacing was not exercised.** The only paced provider is VirusTotal, at one request per
 15 seconds, and `VIRUSTOTAL_API_KEY` is commented out in `.env`. That code path has still
-never run live.
+never run live. URLhaus is deliberately unpaced — abuse.ch publishes a fair-use policy
+rather than a rate — so adding it does not exercise the pacer either.
 
-## Item 7 — the keyless half only
+## Item 7 — URLhaus confirmed against the real API
 
-Confirmed live: a URL field emits **two** observables, the URL and its host, and the host
-observable's `source_paths` carries the `#host` suffix while the email's carries
-`#domain`. The email address was recorded and sent to no provider. The private address
-`10.42.0.7` drew no reputation lookup. `8.8.8.8` reached both RDAP and AbuseIPDB.
+The part that most needed this: URLhaus answers **HTTP 200 for a refused query as well as
+a hit**, so the outcome has to be read from `query_status`. That was implemented against a
+fixture I wrote myself. Probing the real endpoint directly:
 
-Not confirmed: **the URLhaus request shape and its `query_status` handling, and
-VirusTotal's base64 URL identifier.** Both need keys that are not configured, so item 7's
-genuinely uncertain part remains uncertain. The run did exercise the keyless fallback,
-which correctly named `ABUSE_CH_AUTH_KEY` in its skip reason.
+| Probe | HTTP | `query_status` | `_urlhaus_lookup` returned |
+|---|---|---|---|
+| URL listed by URLhaus | 200 | `ok` | `found` |
+| URL not listed | 200 | `no_results` | `not_found` |
+| Malformed URL | 200 | `invalid_url` | `error` |
+| Empty string | 200 | `invalid_url` | `error` |
+
+All four are HTTP 200. Reading the status code instead would have reported the malformed
+and empty queries as hits. The implementation needed no change.
+
+Two further details held up against real data. The reduced `payload_signatures` list is
+deduplicated while `payload_count` counts every payload, and the live record has one
+payload whose `signature` is `null` — so `payload_count: 1` with `payload_signatures: []`
+is the documented asymmetry, now confirmed rather than asserted. And the case wrote the
+URL with an **uppercase scheme**, `HTTP://42.178.23.194:35659/bin.sh`; normalization
+lowercased the scheme, preserved the non-default port and the path, and URLhaus still
+matched the result — so the normalization produces a form the provider accepts.
+
+### Why a URL and its host are separate observables
+
+The clearest evidence for item 7's central design decision came out of one field:
+
+| Observable | Provider | Answer |
+|---|---|---|
+| `http://42.178.23.194:35659/bin.sh` | URLhaus | `malware_download`, online, Mozi ELF/MIPS payload |
+| `42.178.23.194` (`#host`) | AbuseIPDB | confidence score **3**, 1 report |
+| `42.178.23.194` (`#host`) | RDAP | China Unicom Liaoning, allocated portable |
+
+Before item 7 the URL field contributed only its host, so this case would have been
+enriched to "an ordinary consumer ISP address with a near-zero abuse score" — benign
+looking. The malice is in the path, and only the URL lookup sees it. This is the scenario
+the design was argued from, now observed rather than hypothesised.
+
+Also confirmed live: the email address was recorded and sent to no provider, the private
+address `10.42.0.7` drew no reputation lookup, and `8.8.8.8` reached both RDAP and
+AbuseIPDB.
 
 ## The defect this found
 
@@ -109,3 +141,14 @@ change introduced, but it is worth stating plainly: **a case export containing a
 credential still sends it to the model.** Anyone handling exports with embedded secrets
 should know that. It is adjacent to plan item 10, which proposes sending only the source
 fields the normalizer did not already lift.
+
+## What this still does not verify
+
+`VIRUSTOTAL_API_KEY` is commented out, so two things remain asserted only against
+fixtures: **item 5's 15-second pacer**, which exists for no other provider, and **item 7's
+base64 URL identifier**, the unpadded URL-safe encoding VirusTotal requires instead of a
+percent-encoded path segment. Uncommenting that key would close both in one run.
+
+The URLhaus listing recorded here is a point-in-time observation from 2026-08-20. Entries
+are removed as URLs go offline, so a later run of the same case may return `not_found`
+for it; that is the provider's record changing, not a regression.

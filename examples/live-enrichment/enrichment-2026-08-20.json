@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-20T11:36:12.612976Z",
+  "generated_at": "2026-08-20T11:51:50.057987Z",
   "observations": [
     {
       "observable_type": "domain",
@@ -11,11 +11,11 @@
       ],
       "source_paths": [
         "source_data.child_containers[0].artifacts[1].cef.destinationDnsDomain",
-        "source_data.child_containers[0].artifacts[2].cef.requestURL#host",
-        "source_data.child_containers[0].artifacts[3].cef.sourceUserName#domain"
+        "source_data.child_containers[0].artifacts[3].cef.requestURL#host",
+        "source_data.child_containers[0].artifacts[4].cef.sourceUserName#domain"
       ],
       "provider": "cloudflare-dns",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "dns_status": 0,
@@ -50,7 +50,7 @@
         "source_data.child_containers[0].artifacts[0].cef.deviceDnsDomain"
       ],
       "provider": "cloudflare-dns",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "dns_status": 0,
@@ -80,7 +80,7 @@
         "source_data.child_containers[0].artifacts[1].cef.deviceDnsDomain"
       ],
       "provider": "cloudflare-dns",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "dns_status": 0,
@@ -110,7 +110,7 @@
         "source_data.child_containers[0].artifacts[0].cef.destinationDnsDomain"
       ],
       "provider": "cloudflare-dns",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "dns_status": 0,
@@ -135,10 +135,10 @@
       "valid": true,
       "unicode_values": [],
       "source_paths": [
-        "source_data.child_containers[0].artifacts[4].cef.destinationAddress"
+        "source_data.child_containers[0].artifacts[5].cef.destinationAddress"
       ],
       "provider": "rdap",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "rdap_authority": "rdap.arin.net",
@@ -162,10 +162,10 @@
       "valid": true,
       "unicode_values": [],
       "source_paths": [
-        "source_data.child_containers[0].artifacts[4].cef.destinationAddress"
+        "source_data.child_containers[0].artifacts[5].cef.destinationAddress"
       ],
       "provider": "abuseipdb",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "found",
       "details": {
         "abuse_confidence_score": 0,
@@ -185,6 +185,120 @@
       }
     },
     {
+      "observable_type": "url",
+      "value": "http://42.178.23.194:35659/bin.sh",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[2].cef.requestURL"
+      ],
+      "provider": "urlhaus",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
+      "lookup_status": "found",
+      "details": {
+        "query_status": "ok",
+        "url_status": "online",
+        "threat": "malware_download",
+        "tags": [
+          "32-bit",
+          "elf",
+          "mips",
+          "Mozi"
+        ],
+        "date_added": "2026-08-20 11:32:23 UTC",
+        "reporter": "geenensp",
+        "urlhaus_reference": "https://urlhaus.abuse.ch/url/3906165/",
+        "blacklists": {
+          "spamhaus_dbl": "not listed",
+          "surbl": "not listed"
+        },
+        "payload_count": 1,
+        "payload_signatures": []
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "URLhaus records that this URL has been reported as distributing malware. It is recorded separately and is not used to overwrite or automatically resolve existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "url",
+      "value": "https://xn--bcher-kva.de/Katalog/Suche.php?q=1#frag",
+      "valid": true,
+      "unicode_values": [
+        "HTTPS://Bücher.DE:443/Katalog/Suche.php?q=1#frag"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[3].cef.requestURL"
+      ],
+      "provider": "urlhaus",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
+      "lookup_status": "not_found",
+      "details": {
+        "query_status": "no_results"
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "An absent or failed provider result does not confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "ip",
+      "value": "42.178.23.194",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[2].cef.requestURL#host"
+      ],
+      "provider": "rdap",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
+      "lookup_status": "found",
+      "details": {
+        "rdap_authority": "rdap.apnic.net",
+        "rdap_source": "iana-bootstrap",
+        "handle": "42.176.0.0 - 42.183.255.255",
+        "name": "UNICOM-LN",
+        "type": "ALLOCATED PORTABLE",
+        "start_address": "42.176.0.0",
+        "end_address": "42.183.255.255",
+        "country": "CN"
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "ip",
+      "value": "42.178.23.194",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[2].cef.requestURL#host"
+      ],
+      "provider": "abuseipdb",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
+      "lookup_status": "found",
+      "details": {
+        "abuse_confidence_score": 3,
+        "total_reports": 1,
+        "last_reported_at": "2026-08-20T01:47:53+00:00",
+        "is_whitelisted": false,
+        "country_code": "CN",
+        "usage_type": "Fixed Line ISP",
+        "isp": "UNICOM Liaoning Province Network",
+        "domain": "chinaunicom.cn",
+        "report_window_days": 30
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "AbuseIPDB reputation is recorded separately and is not used to overwrite or automatically resolve existing case conclusions."
+      }
+    },
+    {
       "observable_type": "email",
       "value": "Kontakt@xn--bcher-kva.de",
       "valid": true,
@@ -192,10 +306,10 @@
         "Kontakt@BÜCHER.de"
       ],
       "source_paths": [
-        "source_data.child_containers[0].artifacts[3].cef.sourceUserName"
+        "source_data.child_containers[0].artifacts[4].cef.sourceUserName"
       ],
       "provider": "local-validation",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "skipped",
       "details": {
         "reason": "No provider configured here looks up email addresses. The domain part is enriched as its own observable, whose source path carries a `#domain` suffix."
@@ -212,10 +326,10 @@
       "valid": true,
       "unicode_values": [],
       "source_paths": [
-        "source_data.child_containers[0].artifacts[5].cef.sourceAddress"
+        "source_data.child_containers[0].artifacts[6].cef.sourceAddress"
       ],
       "provider": "rdap",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "retrieved_at": "2026-08-20T11:51:50.057987Z",
       "lookup_status": "skipped",
       "details": {
         "reason": "RDAP lookup skipped for a non-global IP address"
@@ -223,28 +337,6 @@
       "artifact_context": [
         "Why this Not globally routable, so no reputation provider should be contacted for it."
       ],
-      "comparison_with_case": {
-        "status": "inconclusive",
-        "explanation": "No provider lookup was performed for this value, so nothing was retrieved to compare with existing case conclusions."
-      }
-    },
-    {
-      "observable_type": "url",
-      "value": "https://xn--bcher-kva.de/Katalog/Suche.php?q=1#frag",
-      "valid": true,
-      "unicode_values": [
-        "HTTPS://Bücher.DE:443/Katalog/Suche.php?q=1#frag"
-      ],
-      "source_paths": [
-        "source_data.child_containers[0].artifacts[2].cef.requestURL"
-      ],
-      "provider": "local-validation",
-      "retrieved_at": "2026-08-20T11:36:12.612976Z",
-      "lookup_status": "skipped",
-      "details": {
-        "reason": "The URLhaus API requires an abuse.ch Auth-Key; set ABUSE_CH_AUTH_KEY to look up URLs. VirusTotal covers URLs as well when its own key is configured, and the host part is enriched as its own observable either way."
-      },
-      "artifact_context": [],
       "comparison_with_case": {
         "status": "inconclusive",
         "explanation": "No provider lookup was performed for this value, so nothing was retrieved to compare with existing case conclusions."

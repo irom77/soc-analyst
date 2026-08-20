@@ -19,8 +19,8 @@ audit mode, then the Tier 4 structural items — is open there and not duplicate
 Every design question in that plan's review section is now resolved. The benchmark was
 re-run on the post-Tier-2 build on 2026-08-20 and all six cases pass; see
 [`evals/post-tier-2-2026-08-20.md`](evals/post-tier-2-2026-08-20.md). The enrichment
-stack was verified against live providers the same day, confirming item 6 and item 5's
-cache and fixing a credential leak it exposed; see
+stack was verified against live providers the same day, confirming item 6, item 5's
+cache, and item 7's URLhaus path, and fixing a credential leak it exposed; see
 [`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
@@ -28,11 +28,11 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 
 ## Existing
 
-- [ ] Exercise the two provider paths a live run could not reach: URLhaus's request shape
-  and `query_status` handling need `ABUSE_CH_AUTH_KEY` (a free auth.abuse.ch account), and
-  VirusTotal's base64 URL identifier plus the 15-second pacer need `VIRUSTOTAL_API_KEY`,
-  which is currently commented out in `.env`. Until then those paths are asserted only
-  against fixtures written alongside the code they check. See
+- [ ] Exercise the two provider paths still unreached by a live run: VirusTotal's base64
+  URL identifier, and item 5's 15-second pacer, which exists for no other provider. Both
+  need `VIRUSTOTAL_API_KEY`, currently commented out in `.env`, and one run closes both.
+  Until then they are asserted only against fixtures written alongside the code they
+  check. URLhaus was confirmed against the real API on 2026-08-20; see
   [`examples/live-enrichment/README.md`](examples/live-enrichment/README.md).
 
 - [ ] Add a dedicated formal compliance-audit mode instead of relying on `user_input`
