@@ -378,6 +378,11 @@ As sketched in TODO.md; keep v1 scope tight:
   validates **deterministically** that every supplied control received exactly one
   response entry and rejects response entries naming unknown controls (coverage
   check in Python, not trusted to the model).
+
+  "Rejects" needs to be read precisely: a coverage defect does not suppress the report,
+  which would throw away the only evidence of what went wrong. It is reported in
+  `checks.problems`, echoed on stderr, and exits `7` so that no caller can mistake an
+  incomplete audit for a complete one. The report is written and marked, not withheld.
 - Bake in "absent from the export = not documented, not proof it did not occur" as a
   schema-level distinction: `insufficient_evidence` vs `fail`.
 - Ship offline first — schema tests, prompt tests, dry-run/explain support, one
@@ -387,7 +392,7 @@ As sketched in TODO.md; keep v1 scope tight:
 
 Built as specified, with every bullet above implemented: `prompts/audit.md`, a
 `CaseAuditReport` of `ControlAssessment` entries, `controls.py` validating the set before
-the request, and `check_audit` in `checks.py` doing coverage in Python. 37 offline tests.
+the request, and `check_audit` in `checks.py` doing coverage in Python. 61 offline tests.
 Shipped without a live run, matching the `--summary` rollout; the recorded example in
 [`examples/audit/`](examples/audit/README.md) is a `--dry-run --explain` preview rather
 than model output, and is labeled as such.

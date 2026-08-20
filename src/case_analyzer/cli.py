@@ -18,12 +18,20 @@ from .analyzer import (
     build_summary_messages,
     summarize_case,
 )
+from .checks import audit_is_incomplete
 from .controls import describe as describe_controls
 from .controls import parse_controls
 from .enrichment import enrich_case
 from .enrichment_cache import EnrichmentCache, ProviderPacer, default_cache_dir
 from .provenance import sha256_file
 from .schemas import RunChecks
+
+# An audit whose response did not cover the supplied control set. Its own code rather than
+# the generic `2`, because it is not an input or configuration error: the invocation was
+# correct and the report was written. A script wrapping this command needs to tell "you
+# asked for something impossible" apart from "the answer is incomplete", and the plain `0`
+# this used to return told it neither.
+AUDIT_INCOMPLETE_EXIT = 7
 
 
 def _json_file(path: Path, max_bytes: int = 0):
@@ -258,7 +266,7 @@ def _report_checks(checks: RunChecks) -> None:
         return
     print(
         f"case-analyzer: report check: {len(problems)} problem(s) found. The report is still "
-        "written; these are defects in how it describes itself, not provider errors.",
+        "written; these are defects in the response, not provider errors.",
         file=sys.stderr,
     )
     for problem in problems:
@@ -353,6 +361,7 @@ def main(argv=None) -> int:
             )
             _report_enrichment(enrichment)
         wanted = _MODE_WANTED[_mode(args.summary, args.audit)]
+        incomplete = False
         if args.audit:
             print(f"case-analyzer: auditing against {describe_controls(controls)}.", file=sys.stderr)
         if args.explain:
@@ -396,6 +405,12 @@ def main(argv=None) -> int:
             # against the set that was parsed here, not one re-derived downstream.
             if args.audit:
                 response = audit_case(case, controls, **request_kwargs)
+                # Decided here, not thrown away: a coverage defect means some supplied
+                # control was never assessed, so the result is not the audit it says it
+                # is. Reported through the exit code because everything else about the
+                # run -- a plausible `digest`, a full-looking `assessments` list, a zero
+                # status -- reads as success to a script that only checks the latter.
+                incomplete = audit_is_incomplete(response, controls)
             elif args.summary:
                 response = summarize_case(case, **request_kwargs)
             else:
@@ -414,6 +429,15 @@ def main(argv=None) -> int:
         if args.explain and not args.dry_run:
             _heading("5. Stop without writing to a source platform")
             print("The standalone command does not update a Case, database, or worker job.")
+        if incomplete:
+            print(
+                "case-analyzer: the audit does not cover the supplied control set; see the "
+                f"coverage problems above. The report is still written to inspect, but "
+                f"exit {AUDIT_INCOMPLETE_EXIT} says it must not be read as an audit of "
+                "every control.",
+                file=sys.stderr,
+            )
+            return AUDIT_INCOMPLETE_EXIT
         return 0
     except LLMProviderError as exc:
         print(f"case-analyzer: LLM error: {exc}", file=sys.stderr)

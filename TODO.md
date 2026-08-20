@@ -24,7 +24,7 @@ cache and pacer, and item 7's URLhaus path, and fixing a credential leak it expo
 [`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (251 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (275 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -62,7 +62,7 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   of per-control `pass`/`fail`/`not_applicable`/`insufficient_evidence` entries with cited
   evidence paths, control records validated before the request in `controls.py`, and a
   deterministic coverage check in `checks.py` that is not asked of the model. Offline
-  only, matching the `--summary` rollout: 37 tests, and the recorded example in
+  only, matching the `--summary` rollout: 61 tests, and the recorded example in
   `examples/audit/` is a `--dry-run --explain` preview, not model output. **The control
   record shape is provisional** -- designed against the requirements in
   `examples/user-input-case-audit/README.md` rather than a real policy export. Flat

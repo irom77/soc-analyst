@@ -162,6 +162,51 @@ def missing_rationales(report: CaseAuditReport) -> list[str]:
     ]
 
 
+def uncited_conclusions(report: CaseAuditReport) -> list[str]:
+    """`pass` and `fail` must cite something; the other two statuses need not.
+
+    Both of those statuses are defined by evidence the export is claimed to contain --
+    `pass` by evidence satisfying the requirement, `fail` by evidence contradicting it --
+    and the prompt already tells the model to cite for both. This turns that instruction
+    into something checkable, because an uncited `pass` is exactly the ungrounded claim an
+    audit must not make. `insufficient_evidence` and `not_applicable` are excluded: they
+    are the honest answers when there is nothing to cite.
+
+    As everywhere in this module, this checks that a citation was offered, never that it
+    supports the status. `unresolved_audit_citations` separately checks that it resolves.
+    """
+    return [
+        f"Assessment {_label(assessment.policy_ref, assessment.control_id)} is "
+        f"{assessment.status!r} but cites no evidence path."
+        for assessment in report.assessments
+        if assessment.status in ("pass", "fail") and not assessment.evidence_paths
+    ]
+
+
+def policy_reference_gaps(report: CaseAuditReport, controls: list[Control]) -> list[str]:
+    """`policy_refs` must account for the policies actually supplied, and invent none.
+
+    Matched on the bare `policy_ref` token rather than the whole string, because the
+    prompt asks for `policy_ref` and `policy_version` combined (`SOC-IRP 2026.1`) and
+    there is no single right way to join them. Checking the formatted string would report
+    a correct answer as a defect for writing `v2026.1`, which is the failure mode the
+    control-identity normalization already had to be fixed for once.
+    """
+    supplied = {control.policy_ref.strip() for control in controls if control.policy_ref.strip()}
+    entries = [entry.strip() for entry in report.policy_refs if entry.strip()]
+    problems = [
+        f"Policy {policy!r} was supplied but is named nowhere in policy_refs."
+        for policy in sorted(supplied)
+        if not any(policy in entry for entry in entries)
+    ]
+    problems += [
+        f"policy_refs entry {entry!r} names no supplied policy."
+        for entry in entries
+        if not any(policy in entry for policy in supplied)
+    ]
+    return problems
+
+
 def check_audit(
     report: CaseAuditReport, case: dict[str, Any], controls: list[Control]
 ) -> list[str]:
@@ -169,8 +214,25 @@ def check_audit(
     return (
         control_coverage(report, controls)
         + missing_rationales(report)
+        + uncited_conclusions(report)
+        + policy_reference_gaps(report, controls)
         + unresolved_audit_citations(report, case)
     )
+
+
+def audit_is_incomplete(report: CaseAuditReport, controls: list[Control]) -> bool:
+    """Did the response fail to cover the supplied control set?
+
+    Separated from the rest of `check_audit` because the consequences differ. A bad
+    citation or a missing rationale is a defect in how the audit describes itself, and the
+    audit is still an audit of every control. A coverage defect means some control was
+    never assessed at all, so the result is not the thing it claims to be -- which is why
+    this one, alone among the checks, decides the exit code.
+
+    The same pure function over the same arguments `check_audit` already ran, so the exit
+    code and the saved `checks.problems` cannot disagree about what happened.
+    """
+    return bool(control_coverage(report, controls))
 
 
 def _label(policy_ref: str, control_id: str) -> str:

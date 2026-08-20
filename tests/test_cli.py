@@ -412,6 +412,47 @@ class AuditCliTests(unittest.TestCase):
         self.assertEqual([("SOC-IRP", "IR-1.1")], [control.key for control in controls])
 
     @patch("case_analyzer.cli.audit_case")
+    def test_an_incomplete_audit_exits_nonzero_and_still_writes_the_report(self, audit_case):
+        """A control that was never assessed is a hole in the audit, not a wording defect.
+
+        Exit `0` here meant a script could not tell a full audit from one that silently
+        skipped a control, while the model's own `digest` claimed everything was covered.
+        """
+        result = self._audit_result()
+        result.assessments = []
+        result.case_analyzer_run.checks = RunChecks(
+            ran=True, problems=["Control SOC-IRP IR-1.1 was supplied but received no assessment."]
+        )
+        audit_case.return_value = result
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            status = cli.main(
+                [str(self.case_path), "--audit", "--knowledge", str(self.controls_path)]
+            )
+
+        self.assertEqual(cli.AUDIT_INCOMPLETE_EXIT, status)
+        self.assertIn("does not cover the supplied control set", errors.getvalue())
+        # Still written, because the incomplete report is what a person needs to see.
+        self.assertEqual([], json.loads(output.getvalue())["assessments"])
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_a_non_coverage_defect_still_exits_zero(self, audit_case):
+        """An unresolvable citation is reported, but the audit did cover every control."""
+        result = self._audit_result()
+        result.case_analyzer_run.checks = RunChecks(
+            ran=True, problems=["Assessment SOC-IRP IR-1.1 cites 'x', which does not resolve."]
+        )
+        audit_case.return_value = result
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errors):
+            status = cli.main(
+                [str(self.case_path), "--audit", "--knowledge", str(self.controls_path)]
+            )
+
+        self.assertEqual(0, status)
+        self.assertIn("does not resolve", errors.getvalue())
+
+    @patch("case_analyzer.cli.audit_case")
     def test_audit_without_a_control_set_fails_before_any_request(self, audit_case):
         errors = io.StringIO()
         with redirect_stdout(io.StringIO()), redirect_stderr(errors):

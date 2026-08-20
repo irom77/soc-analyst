@@ -47,11 +47,20 @@ The model is not trusted with the claim an audit rests on. After the response va
 - every supplied control received **exactly one** assessment,
 - no assessment names a control that was not supplied,
 - every assessment has a non-empty rationale, including `not_applicable`,
-- every cited `evidence_paths` entry resolves in the payload that was actually sent.
+- every `pass` and every `fail` cites at least one evidence path,
+- every cited `evidence_paths` entry resolves in the payload that was actually sent,
+- `policy_refs` names every supplied policy and invents none.
 
 Findings land in `case_analyzer_run.checks.problems` and are echoed on stderr. As
 elsewhere in this tool, a resolving citation proves the model named a field that exists,
 never that the field supports the status it was cited for.
+
+**Only the first two decide the exit code.** A response that fails either of them did not
+assess some supplied control, so the result is not an audit of the set it names, and the
+command exits `7` — the report is still written, because the incomplete report is what a
+person needs in order to see what went wrong. The remaining checks are defects *in* an
+audit that did cover every control, so they are reported on stderr and recorded in the
+result while the command exits `0`.
 
 The control set itself is validated **before** the request, so a set with duplicate or
 empty identifiers costs nothing to discover. `--dry-run` runs that validation too, which
@@ -85,15 +94,23 @@ fields without this schema anticipating them.
 are the ones most likely to need revisiting, and each is pinned by a test so it cannot
 change silently:
 
-1. **Controls are flat.** No sub-controls, because nesting is exactly what makes "one
-   assessment per control" ambiguous. Flatten sub-controls into distinct ids (`IR-4.2.a`)
-   when preparing records.
+1. **Controls are flat, and this is enforced.** No sub-controls, because nesting is
+   exactly what makes "one assessment per control" ambiguous — a nested sub-control
+   reaches the model but has no identity of its own, so coverage would report a clean
+   audit of a set containing something nobody assessed. A record carrying a nested object
+   or list with a `control_id` in it is refused before the request; flatten sub-controls
+   into distinct ids (`IR-4.2.a`) when preparing records. Nested structure that is not
+   control-shaped — a framework mapping, a review history — is left alone.
 2. **Identity is `(policy_ref, control_id)`.** Two policies can each number a control
    `4.2` in one run. With a single policy it degrades to the bare id.
 3. **`applies_when` is optional; a rationale is required for every status.** The field
-   gives `not_applicable` a stated basis, and the mandatory rationale is what stops
-   `not_applicable` from becoming the escape hatch for a control the model could not
-   evidence.
+   gives `not_applicable` a stated basis, and requiring a rationale regardless means the
+   model has to write *something* rather than returning a bare status. It is a check on
+   form, not on substance: `"n/a"` is a non-empty rationale and passes. Nothing here
+   prevents an unhelpful audit that marks every control `not_applicable` with a
+   one-syllable justification, and no local check can — judging whether a stated basis is
+   real is the reviewer's job, which is why the result is decision support rather than a
+   verdict.
 
 ## Limits
 
@@ -105,3 +122,8 @@ change silently:
 - Enrichment cannot evidence a process control. `case.case_analyzer_enrichment` describes
   observables, not what an analyst did, and the prompt says so.
 - `--audit` and `--summary` are mutually exclusive.
+- In `--audit`, **every** `--knowledge` record is read as a control. There is no way to
+  supply supplementary non-control knowledge alongside the control set; a record declaring
+  another `record_type` is refused.
+- Coverage is a check on identity, not on substance. The exit code tells you whether every
+  control was assessed, never whether it was assessed correctly.

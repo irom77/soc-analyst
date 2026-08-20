@@ -28,7 +28,7 @@ from pydantic import BaseModel, ValidationError
 
 from .adapters import source_data_residue
 from .checks import check_audit, check_report
-from .controls import Control
+from .controls import Control, parse_controls
 from .provenance import build_run_metadata
 from .schemas import (
     AnalyzedAudit,
@@ -399,9 +399,20 @@ def audit_case(
 
     `controls` is passed separately from `knowledge_records` even though the records are
     where the controls came from: the parsed list is what the coverage check compares
-    against, and re-parsing it here would let a caller check a response against a control
-    set other than the one that was actually sent.
+    against, so the response is scored against the set that was actually sent.
+
+    Passing them separately is also how they could disagree, so the correspondence is
+    enforced here rather than only at the CLI. Without this, `audit_case(case, [],
+    knowledge_records=[malformed])` spends a paid request on a set that would never have
+    survived `parse_controls`, and passing control A while sending control B scores the
+    response against a control the model never saw. Re-parsing costs nothing -- it is
+    offline and pure -- and it makes the invariant hold at the API boundary, not just for
+    the one caller that happens to validate first.
+
+    Raises `ValueError` if the records are missing, malformed, or name a different set of
+    controls than `controls` does.
     """
+    _require_correspondence(controls, knowledge_records)
     payload = build_analysis_payload(
         case,
         knowledge_records=knowledge_records,
@@ -428,3 +439,22 @@ def audit_case(
             checks=RunChecks(ran=True, problems=check_audit(report, payload["case"], controls)),
         ),
     )
+
+
+def _require_correspondence(
+    controls: list[Control], knowledge_records: list[dict[str, Any]] | None
+) -> None:
+    """The controls checked against must be exactly the controls sent, and both valid."""
+    if not controls:
+        raise ValueError(
+            "An audit needs a control set: with none supplied, every control is vacuously "
+            "covered and the report claims an audit that did not happen."
+        )
+    sent = {control.key for control in parse_controls(list(knowledge_records or []))}
+    checked = {control.key for control in controls}
+    if sent != checked:
+        raise ValueError(
+            "The controls sent to the model and the controls the response is checked "
+            "against are not the same set; an audit checked against a control the model "
+            "never saw is meaningless."
+        )

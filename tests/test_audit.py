@@ -9,10 +9,15 @@ import json
 import unittest
 from importlib.resources import files
 
+from case_analyzer.adapters import normalize_case
+from case_analyzer.analyzer import audit_case
 from case_analyzer.checks import (
+    audit_is_incomplete,
     check_audit,
     control_coverage,
     missing_rationales,
+    policy_reference_gaps,
+    uncited_conclusions,
     unresolved_audit_citations,
 )
 from case_analyzer.controls import Control, describe, parse_controls
@@ -227,6 +232,59 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(2, len(control_coverage(report, controls)))
 
 
+class NestedControlTests(unittest.TestCase):
+    """`extra="allow"` must not become a way to smuggle an unassessable control."""
+
+    def test_a_record_nesting_sub_controls_is_refused(self):
+        """Nested, a sub-control reaches the model with no identity coverage can match."""
+        with self.assertRaises(ValueError) as caught:
+            parse_controls(
+                [
+                    {
+                        "control_id": "IR-4",
+                        "requirement": "perform incident response",
+                        "subcontrols": [
+                            {"control_id": "IR-4.a", "requirement": "document containment"}
+                        ],
+                    }
+                ]
+            )
+
+        message = str(caught.exception)
+        self.assertIn("IR-4", message)
+        self.assertIn("subcontrols", message)
+        self.assertIn("flatten", message)
+
+    def test_a_single_nested_control_object_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            parse_controls(
+                [
+                    {
+                        "control_id": "IR-4",
+                        "requirement": "a",
+                        "parent": {"control_id": "IR-4.0", "requirement": "b"},
+                    }
+                ]
+            )
+
+        self.assertIn("parent", str(caught.exception))
+
+    def test_unrelated_nested_structure_is_still_allowed(self):
+        """The point is to keep policy-export detail, so only control shapes are refused."""
+        controls = parse_controls(
+            [
+                {
+                    "control_id": "IR-4",
+                    "requirement": "a",
+                    "framework_mapping": {"nist": "IR-4", "iso": "A.16"},
+                    "review_history": [{"reviewer": "b.auditor", "date": "2026-01-01"}],
+                }
+            ]
+        )
+
+        self.assertEqual(1, len(controls))
+
+
 class RationaleTests(unittest.TestCase):
     def test_a_blank_rationale_is_reported(self):
         """Otherwise `not_applicable` is the cheapest exit from a control that lacks evidence."""
@@ -239,6 +297,91 @@ class RationaleTests(unittest.TestCase):
 
     def test_a_present_rationale_is_clean(self):
         self.assertEqual([], missing_rationales(_report([_assessment("A")])))
+
+
+class UncitedConclusionTests(unittest.TestCase):
+    """`pass` and `fail` both claim the export contains something; make them show it."""
+
+    def test_an_uncited_pass_is_reported(self):
+        report = _report([_assessment("A", status="pass", evidence_paths=[])])
+
+        self.assertEqual(
+            ["Assessment A is 'pass' but cites no evidence path."], uncited_conclusions(report)
+        )
+
+    def test_an_uncited_fail_is_reported(self):
+        report = _report([_assessment("A", status="fail", evidence_paths=[])])
+
+        self.assertEqual(1, len(uncited_conclusions(report)))
+
+    def test_an_uncited_insufficient_evidence_is_clean(self):
+        """Its whole meaning is that there was nothing to cite."""
+        self.assertEqual([], uncited_conclusions(_report([_assessment("A", evidence_paths=[])])))
+
+    def test_an_uncited_not_applicable_is_clean(self):
+        report = _report([_assessment("A", status="not_applicable", evidence_paths=[])])
+
+        self.assertEqual([], uncited_conclusions(report))
+
+    def test_a_cited_pass_is_clean(self):
+        report = _report(
+            [_assessment("A", status="pass", evidence_paths=["source_data.owner_name"])]
+        )
+
+        self.assertEqual([], uncited_conclusions(report))
+
+
+class PolicyReferenceTests(unittest.TestCase):
+    def test_an_unnamed_policy_is_reported(self):
+        controls = [_control("A", policy_ref="SOC-IRP")]
+        report = _report([_assessment("A")])
+
+        self.assertEqual(
+            ["Policy 'SOC-IRP' was supplied but is named nowhere in policy_refs."],
+            policy_reference_gaps(report, controls),
+        )
+
+    def test_an_invented_policy_is_reported(self):
+        controls = [_control("A", policy_ref="SOC-IRP")]
+        report = CaseAuditReport(
+            digest="d", assessments=[_assessment("A")], policy_refs=["SOC-IRP 2026.1", "PCI-DSS"]
+        )
+
+        self.assertEqual(
+            ["policy_refs entry 'PCI-DSS' names no supplied policy."],
+            policy_reference_gaps(report, controls),
+        )
+
+    def test_the_version_may_be_appended_however_the_model_writes_it(self):
+        """Matching on the bare policy_ref, so formatting the version cannot fail a good answer."""
+        controls = [_control("A", policy_ref="SOC-IRP", policy_version="2026.1")]
+        report = CaseAuditReport(
+            digest="d", assessments=[_assessment("A")], policy_refs=["SOC-IRP v2026.1"]
+        )
+
+        self.assertEqual([], policy_reference_gaps(report, controls))
+
+    def test_controls_without_a_policy_ref_expect_nothing(self):
+        self.assertEqual([], policy_reference_gaps(_report([_assessment("A")]), [_control("A")]))
+
+
+class AuditCompletenessTests(unittest.TestCase):
+    """Only coverage decides the exit code; the other checks are warnings."""
+
+    def test_a_dropped_control_makes_the_audit_incomplete(self):
+        self.assertTrue(audit_is_incomplete(_report([_assessment("A")]), [_control("A"), _control("B")]))
+
+    def test_an_invented_control_makes_the_audit_incomplete(self):
+        report = _report([_assessment("A"), _assessment("Z")])
+
+        self.assertTrue(audit_is_incomplete(report, [_control("A")]))
+
+    def test_a_covered_set_is_complete_despite_other_defects(self):
+        """A bad citation is a defect in the audit, not a hole in it."""
+        report = _report([_assessment("A", evidence_paths=["source_data.nope"])])
+
+        self.assertFalse(audit_is_incomplete(report, [_control("A")]))
+        self.assertEqual(1, len(check_audit(report, _CASE, [_control("A")])))
 
 
 class AuditCitationTests(unittest.TestCase):
@@ -259,11 +402,14 @@ class AuditCitationTests(unittest.TestCase):
         self.assertEqual([], unresolved_audit_citations(report, _CASE))
 
     def test_check_audit_composes_every_check(self):
-        controls = [_control("A"), _control("B")]
-        report = _report([_assessment("A", rationale="", evidence_paths=["source_data.nope"])])
+        controls = [_control("A", policy_ref="SOC-IRP"), _control("B")]
+        report = _report(
+            [_assessment("A", status="pass", rationale="", evidence_paths=[], policy_ref="SOC-IRP")]
+        )
 
+        # Missing B, blank rationale, uncited pass, and an unnamed policy.
         problems = check_audit(report, _CASE, controls)
-        self.assertEqual(3, len(problems), problems)
+        self.assertEqual(4, len(problems), problems)
 
 
 class AuditPromptTests(unittest.TestCase):
@@ -292,6 +438,46 @@ class AuditPromptTests(unittest.TestCase):
 
     def test_the_prompt_states_it_does_not_close_a_case(self):
         self.assertIn("human reviewer", self.prompt)
+
+    def test_the_prompt_requires_a_citation_for_pass_and_fail(self):
+        """The Python check enforces what the prompt asks for; both must say the same thing."""
+        self.assertIn("`pass` or a `fail` must cite at least one path", self.prompt)
+
+
+class AuditApiBoundaryTests(unittest.TestCase):
+    """`audit_case` upholds the invariant itself, not only when the CLI calls it.
+
+    Every failure here has to be caught before `_request_structured` runs, because the
+    point is that a set which could never be audited does not get to spend a paid request.
+    """
+
+    def setUp(self):
+        self.case = normalize_case({"id": "1", "title": "Example"})
+        self.record = {"control_id": "A", "requirement": "own it"}
+
+    def test_an_empty_control_set_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            audit_case(self.case, [], knowledge_records=[self.record])
+
+        self.assertIn("needs a control set", str(caught.exception))
+
+    def test_a_malformed_record_never_reaches_the_request(self):
+        """`audit_case(case, [], knowledge_records=[bad])` used to pay for the discovery."""
+        with self.assertRaises(ValueError) as caught:
+            audit_case(self.case, [_control("A")], knowledge_records=[{"control_id": "A"}])
+
+        self.assertIn("not a valid control", str(caught.exception))
+
+    def test_checking_against_controls_that_were_not_sent_is_refused(self):
+        """Coverage of a control the model never saw is not coverage of anything."""
+        with self.assertRaises(ValueError) as caught:
+            audit_case(self.case, [_control("A")], knowledge_records=[{"control_id": "B", "requirement": "b"}])
+
+        self.assertIn("not the same set", str(caught.exception))
+
+    def test_missing_knowledge_records_are_refused(self):
+        with self.assertRaises(ValueError):
+            audit_case(self.case, [_control("A")])
 
 
 class ExampleControlSetTests(unittest.TestCase):

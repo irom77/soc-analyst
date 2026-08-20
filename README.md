@@ -214,7 +214,8 @@ raw model output. A missing model or API key is reported before any request is s
 Automatic LLM retries are disabled to avoid unplanned cost and additional rate-limit
 pressure; `--llm-timeout` (default `120` seconds) bounds a single request. Exit codes
 are `2` for input/configuration errors, `3` for authentication, `4` for rate/quota
-limits, `5` for timeout/connection failures, and `6` for other provider errors.
+limits, `5` for timeout/connection failures, `6` for other provider errors, and `7` for an
+`--audit` response that did not cover the supplied control set.
 
 ### Check what the report says about itself
 
@@ -357,13 +358,24 @@ recorded containment step is `insufficient_evidence` for a containment control u
 export positively shows containment was refused. `fail` requires evidence of its own.
 
 Controls are ordinary `--knowledge` records requiring only `control_id` and `requirement`;
-unknown fields are preserved and reach the model. The set is validated **before** the
-request — identities must be unique and non-empty — so a malformed control file costs
-nothing to discover, and `--dry-run` validates it too. After the response, `checks.py`
-verifies deterministically that every supplied control received exactly one assessment,
-that no assessment names an unsupplied control, that every status carries a rationale, and
-that every cited path resolves; findings land in `case_analyzer_run.checks.problems`.
-None of that is asked of the model.
+unknown fields are preserved and reach the model, though a record nesting sub-controls is
+refused because a nested control has no identity to check coverage against. In `--audit`
+every supplied record is read as a control, so there is no supplementary knowledge. The
+set is validated **before** the request — identities must be unique and non-empty — so a
+malformed control file costs nothing to discover, and `--dry-run` validates it too.
+
+After the response, `checks.py` verifies deterministically that every supplied control
+received exactly one assessment, that no assessment names an unsupplied control, that
+every status carries a rationale, that every `pass` and `fail` cites something, that every
+cited path resolves, and that `policy_refs` accounts for the supplied policies. Findings
+land in `case_analyzer_run.checks.problems`. None of it is asked of the model. A coverage
+defect — a control assessed zero times or twice, or an assessment naming a control that
+was not supplied — also exits `7`, because such a response is not an audit of the set it
+claims to cover; the report is still written so the failure can be inspected. The other
+checks are warnings on an audit that did cover every control, and exit `0`.
+
+Coverage is a check on identity, not on substance: it tells you every control was
+assessed, never that any of them was assessed well.
 
 ```bash
 uv run case-analyzer examples/splunk-soar.json --format soar \

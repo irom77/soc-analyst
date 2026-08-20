@@ -9,9 +9,10 @@ The record shape is provisional. It was designed against the requirements writte
 `examples/user-input-case-audit/README.md` rather than against a real policy export, and
 the three decisions most likely to need revisiting are recorded here:
 
-* **Controls are flat.** There are no sub-controls, because nesting is exactly what makes
-  "one response per control" ambiguous. A policy with sub-controls flattens them into
-  distinct ids (`IR-4.2`, `IR-4.2.a`) when the records are prepared.
+* **Controls are flat, and a nested one is refused.** There are no sub-controls, because
+  nesting is exactly what makes "one response per control" ambiguous. A policy with
+  sub-controls flattens them into distinct ids (`IR-4.2`, `IR-4.2.a`) when the records are
+  prepared. This was documented but unenforced until `_nested_control_fields`.
 * **Identity is `(policy_ref, control_id)`,** not `control_id` alone, so two policies that
   both number a control `4.2` can be supplied in one run. `policy_ref` stays optional and
   the pair degrades to the bare id for the single-policy case.
@@ -115,6 +116,13 @@ def parse_controls(records: list[Any]) -> list[Control]:
                 f"control {control.control_id!r} has an empty requirement and cannot be assessed"
             )
             continue
+        nested = _nested_control_fields(record)
+        if nested:
+            problems.append(
+                f"{_where(record, index)} nests controls under {', '.join(nested)}; flatten "
+                f"sub-controls into their own records with distinct control_id values"
+            )
+            continue
         controls.append(control)
     problems.extend(_duplicate_problems(controls))
     if problems:
@@ -137,6 +145,34 @@ def _duplicate_problems(controls: list[Control]) -> list[str]:
         for (policy_ref, control_id), count in sorted(counts.items())
         if count > 1
     ]
+
+
+def _nested_control_fields(record: dict) -> list[str]:
+    """Field names holding something that is itself shaped like a control.
+
+    "Controls are flat" was documented but unenforced, and `extra="allow"` -- which exists
+    so a policy export can carry its own framework mappings -- let a nested sub-control
+    through as part of its parent. It reached the model, but it had no identity of its
+    own, so coverage reported a clean audit of a set with an unassessed control in it.
+    That is the one way this module's central claim can be false while every check passes.
+
+    Detection is by the `control_id` key rather than by field name: a policy export may
+    call the field anything, and a field carrying arbitrary non-control structure (a
+    mapping table, a review history) is left alone.
+    """
+    return sorted(
+        field
+        for field, value in record.items()
+        if field not in Control.model_fields and _holds_control(value)
+    )
+
+
+def _holds_control(value: Any) -> bool:
+    if isinstance(value, dict):
+        return "control_id" in value
+    if isinstance(value, list):
+        return any(isinstance(item, dict) and "control_id" in item for item in value)
+    return False
 
 
 def _where(record: dict, index: int) -> str:
