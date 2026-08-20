@@ -207,6 +207,25 @@ class CoverageTests(unittest.TestCase):
 
         self.assertEqual([], control_coverage(report, controls))
 
+    def test_a_padded_control_record_is_still_matchable(self):
+        """The record side must normalize identically to the response side.
+
+        It did not: only `control_key` stripped, so a control whose id carried stray
+        whitespace could not be matched by a model that echoed it back verbatim -- exactly
+        what the prompt instructs -- and a correct answer was reported as two defects.
+        """
+        controls = [_control(" A ", policy_ref=" SOC-IRP ")]
+        report = _report([_assessment(" A ", policy_ref=" SOC-IRP ")])
+
+        self.assertEqual([], control_coverage(report, controls))
+
+    def test_identifiers_stay_case_sensitive(self):
+        """Folding case would merge two controls a policy deliberately keeps apart."""
+        controls = [_control("ir-1.1")]
+        report = _report([_assessment("IR-1.1")])
+
+        self.assertEqual(2, len(control_coverage(report, controls)))
+
 
 class RationaleTests(unittest.TestCase):
     def test_a_blank_rationale_is_reported(self):

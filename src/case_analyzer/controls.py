@@ -57,14 +57,20 @@ class Control(BaseModel):
     @property
     def key(self) -> tuple[str, str]:
         """Identity for coverage matching: the policy it came from, plus its own id."""
-        return (self.policy_ref, self.control_id)
+        return control_key(self.policy_ref, self.control_id)
 
 
 def control_key(policy_ref: str, control_id: str) -> tuple[str, str]:
-    """The same identity, built from a model response rather than from a supplied record.
+    """Identity, normalized the one way both sides use.
 
-    Kept as one function so the response side and the record side cannot drift into
-    normalizing differently -- a mismatch here would read as a coverage defect.
+    Both `Control.key` and the coverage check route through here so the record side and
+    the response side cannot drift into normalizing differently. They did once: only the
+    response side stripped, so a control record whose id carried stray whitespace was
+    unmatchable by a model that echoed it back verbatim exactly as instructed, and the
+    run reported two coverage defects for a correct answer.
+
+    Whitespace only. Case is left alone because control identifiers are frequently
+    case-significant, and folding them would merge two distinct controls into one.
     """
     return (policy_ref.strip(), control_id.strip())
 
