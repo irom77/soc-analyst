@@ -363,7 +363,7 @@ providers multiply request volume.
 
 ## Tier 3 — dedicated audit mode (design before code)
 
-### 8. `--audit` mode
+### 8. `--audit` mode — DONE (2026-08-20), shipped offline
 
 As sketched in TODO.md; keep v1 scope tight:
 
@@ -384,6 +384,36 @@ As sketched in TODO.md; keep v1 scope tight:
   recorded example — before any live run, matching how `--summary` was rolled out.
 - Require human review before the result can close a case or change a compliance
   record (documentation and exit-behavior, not auto-write-back).
+
+Built as specified, with every bullet above implemented: `prompts/audit.md`, a
+`CaseAuditReport` of `ControlAssessment` entries, `controls.py` validating the set before
+the request, and `check_audit` in `checks.py` doing coverage in Python. 37 offline tests.
+Shipped without a live run, matching the `--summary` rollout; the recorded example in
+[`examples/audit/`](examples/audit/README.md) is a `--dry-run --explain` preview rather
+than model output, and is labeled as such.
+
+**The control record shape is provisional and was designed, not observed.** It follows the
+requirements written down in `examples/user-input-case-audit/README.md` — named controls,
+per-control status, citations, policy versions, exceptions — because no real policy export
+was available to design against. Three decisions carry the risk, each pinned by a test so
+it cannot drift silently:
+
+- **Controls are flat.** Nesting is precisely what makes "exactly one assessment per
+  control" ambiguous, which the item calls out as the reason to validate uniqueness at
+  all. Sub-controls are flattened into distinct ids when records are prepared.
+- **Identity is `(policy_ref, control_id)`,** so two policies can each number a control
+  `4.2` in one run; it degrades to the bare id for a single policy. Narrowing this later
+  to `control_id` alone is a breaking change for multi-policy sets.
+- **`applies_when` is optional, and a rationale is mandatory for every status.**
+  `not_applicable` is the one status producing neither a finding nor a gap, so leaving it
+  unexplained would make it the cheapest exit from a control the model could not evidence.
+
+What that leaves unproven is what the offline suite cannot reach: whether a real control
+set parses without reshaping, and whether the model actually holds the
+`fail`/`insufficient_evidence` line under a case whose text asserts its own compliance.
+The prompt addresses the second and the injection hardening from item 9 applies, but
+neither has been measured here. A live run against a real control set is the next step,
+and the eval harness has no audit cases yet.
 
 ## Tier 4 — structural, propose-and-discuss
 

@@ -11,11 +11,15 @@ from .adapters import normalize_case
 from .analyzer import (
     LLMProviderError,
     analyze_case,
+    audit_case,
     build_analysis_messages,
     build_analysis_payload,
+    build_audit_messages,
     build_summary_messages,
     summarize_case,
 )
+from .controls import describe as describe_controls
+from .controls import parse_controls
 from .enrichment import enrich_case
 from .enrichment_cache import EnrichmentCache, ProviderPacer, default_cache_dir
 from .provenance import sha256_file
@@ -64,6 +68,16 @@ def _parser() -> argparse.ArgumentParser:
             "Ask the LLM to describe the input case in prose and stop. Prints a summary plus its "
             "run provenance instead of an InvestigationReport; no verdict, severity, or "
             "remediation is produced."
+        ),
+    )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help=(
+            "Assess the case against the control records supplied with --knowledge and stop. "
+            "Prints a CaseAuditReport: one pass/fail/not_applicable/insufficient_evidence entry "
+            "per control, with cited evidence paths. Requires --knowledge. Decision support for "
+            "a human reviewer; it does not close a case or clear a control."
         ),
     )
     parser.add_argument(
@@ -172,8 +186,35 @@ def _print_json(value) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
 
 
+# The three request modes, kept in one place so the flag, the preview, and the request
+# cannot disagree about which prompt and schema a run uses.
+_MODE_NAMES = {
+    "analysis": "investigation",
+    "summary": "case-summary",
+    "audit": "control-audit",
+}
+_MODE_WANTED = {
+    "analysis": "an InvestigationReport",
+    "summary": "a case summary",
+    "audit": "a CaseAuditReport",
+}
+
+
+def _mode(summary: bool, audit: bool) -> str:
+    if audit:
+        return "audit"
+    return "summary" if summary else "analysis"
+
+
 def _explain(
-    case, knowledge, knowledge_path, user_input, *, summary: bool = False, reduce_source_data: bool = False
+    case,
+    knowledge,
+    knowledge_path,
+    user_input,
+    *,
+    summary: bool = False,
+    audit: bool = False,
+    reduce_source_data: bool = False,
 ) -> None:
     _heading("1. Normalize the exported Case")
     _print_json(case.model_dump(mode="json", exclude_none=True))
@@ -185,8 +226,10 @@ def _explain(
         print("No Knowledge file supplied; the standalone analyzer does not query a database.")
     _print_json(knowledge)
 
-    _heading(f"3. Build the structured {'case-summary' if summary else 'investigation'} request")
-    build_messages = build_summary_messages if summary else build_analysis_messages
+    _heading(f"3. Build the structured {_MODE_NAMES[_mode(summary, audit)]} request")
+    build_messages = build_audit_messages if audit else (
+        build_summary_messages if summary else build_analysis_messages
+    )
     # Passed through so --explain keeps showing the exact messages that would be sent;
     # printing the full payload while --reduce-source-data shrinks the real one would
     # make this preview a lie.
@@ -257,6 +300,12 @@ def _report_enrichment(enrichment) -> None:
 
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
+    if args.audit and args.summary:
+        print(
+            "case-analyzer: --audit and --summary ask for different reports; pick one.",
+            file=sys.stderr,
+        )
+        return 2
     try:
         load_dotenv()
         case = normalize_case(_json_file(args.input, args.max_input_bytes), args.format)
@@ -265,6 +314,11 @@ def main(argv=None) -> int:
         knowledge = _json_file(args.knowledge, args.max_input_bytes) if args.knowledge else []
         if not isinstance(knowledge, list):
             raise ValueError("The knowledge file must contain a JSON array.")
+        # Settled here, before enrichment and before any request: a control set with
+        # duplicate or empty identifiers makes "exactly one assessment per control"
+        # unmatchable, and discovering that after a paid call has already gone out helps
+        # nobody. `--dry-run` validates it too, which is the point of previewing an audit.
+        controls = parse_controls(knowledge) if args.audit else []
         if args.enrich:
             if args.dry_run and not args.allow_enrichment_in_dry_run:
                 raise ValueError(
@@ -298,7 +352,9 @@ def main(argv=None) -> int:
                 abuse_ch_api_key=os.getenv("ABUSE_CH_AUTH_KEY"),
             )
             _report_enrichment(enrichment)
-        wanted = "a case summary" if args.summary else "an InvestigationReport"
+        wanted = _MODE_WANTED[_mode(args.summary, args.audit)]
+        if args.audit:
+            print(f"case-analyzer: auditing against {describe_controls(controls)}.", file=sys.stderr)
         if args.explain:
             _explain(
                 case,
@@ -306,6 +362,7 @@ def main(argv=None) -> int:
                 args.knowledge,
                 args.user_input,
                 summary=args.summary,
+                audit=args.audit,
                 reduce_source_data=args.reduce_source_data,
             )
         if args.dry_run:
@@ -321,9 +378,7 @@ def main(argv=None) -> int:
         else:
             if args.explain:
                 _heading(f"4. Invoke the LLM for {wanted}")
-            request = summarize_case if args.summary else analyze_case
-            response = request(
-                case,
+            request_kwargs = dict(
                 knowledge_records=knowledge,
                 user_input=args.user_input,
                 model=args.model,
@@ -335,6 +390,16 @@ def main(argv=None) -> int:
                 # saved report can be tied back to the export it came from.
                 input_file_sha256=sha256_file(args.input),
             )
+            # Named calls rather than a lookup table: the table would capture these
+            # functions at import time, and the module attribute is what tests and
+            # embedders patch. `controls` is positional because an audit is checked
+            # against the set that was parsed here, not one re-derived downstream.
+            if args.audit:
+                response = audit_case(case, controls, **request_kwargs)
+            elif args.summary:
+                response = summarize_case(case, **request_kwargs)
+            else:
+                response = analyze_case(case, **request_kwargs)
             _report_checks(response.case_analyzer_run.checks)
             # `mode="json"` renders the run timestamp; every other field is already
             # JSON-native.

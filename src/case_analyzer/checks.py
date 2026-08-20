@@ -10,9 +10,11 @@ evidence that a report is grounded.
 """
 
 import re
+from collections import Counter
 from typing import Any
 
-from .schemas import LIST_CAPS, InvestigationReport
+from .controls import Control, control_key
+from .schemas import LIST_CAPS, CaseAuditReport, InvestigationReport
 
 # One path segment: a key, optionally followed by any number of `[n]` indices.
 _SEGMENT = re.compile(r"^([^\[\]]+)((?:\[\d+\])*)$")
@@ -99,3 +101,77 @@ def inconsistent_truncation(report: InvestigationReport) -> list[str]:
 def check_report(report: InvestigationReport, case: dict[str, Any]) -> list[str]:
     """Every post-check finding, as lines suitable for stderr. Empty means nothing found."""
     return unresolved_citations(report, case) + inconsistent_truncation(report)
+
+
+def unresolved_audit_citations(report: CaseAuditReport, case: dict[str, Any]) -> list[str]:
+    """Evidence paths in an audit that do not name anything in the payload.
+
+    Same grammar and same limits as `unresolved_citations`: this proves the model named a
+    field that exists, never that the field supports the status it was cited for.
+    """
+    return [
+        f"Assessment {_label(assessment.policy_ref, assessment.control_id)} cites "
+        f"{path!r}, which does not resolve in the case payload."
+        for assessment in report.assessments
+        for path in assessment.evidence_paths
+        if not resolve_case_path(case, path)
+    ]
+
+
+def control_coverage(report: CaseAuditReport, controls: list[Control]) -> list[str]:
+    """Exactly one assessment per supplied control, and none for anything else.
+
+    Done in Python rather than asked of the model, because this is the claim an audit
+    rests on: a control silently dropped from the response would otherwise read as a
+    control that raised no concern. Order is not trusted -- entries are matched by
+    `(policy_ref, control_id)`, so a reordered or partially-answered response is still
+    scored correctly.
+    """
+    supplied = {control.key for control in controls}
+    seen = Counter(
+        control_key(assessment.policy_ref, assessment.control_id)
+        for assessment in report.assessments
+    )
+    problems = [
+        f"Control {_label(*key)} was supplied but received no assessment."
+        for key in sorted(supplied - set(seen))
+    ]
+    problems += [
+        f"Control {_label(*key)} received {count} assessments; expected exactly one."
+        for key, count in sorted(seen.items())
+        if count > 1 and key in supplied
+    ]
+    problems += [
+        f"Assessment {_label(*key)} names a control that was not supplied."
+        for key in sorted(set(seen) - supplied)
+    ]
+    return problems
+
+
+def missing_rationales(report: CaseAuditReport) -> list[str]:
+    """Every status must be explained, `not_applicable` included.
+
+    Without this, `not_applicable` is the cheapest way out of a control the model could
+    not evidence, and it is the one status that produces neither a finding nor a gap.
+    """
+    return [
+        f"Assessment {_label(assessment.policy_ref, assessment.control_id)} has status "
+        f"{assessment.status!r} with no rationale."
+        for assessment in report.assessments
+        if not assessment.rationale.strip()
+    ]
+
+
+def check_audit(
+    report: CaseAuditReport, case: dict[str, Any], controls: list[Control]
+) -> list[str]:
+    """Every post-check over an audit response. Empty means nothing found."""
+    return (
+        control_coverage(report, controls)
+        + missing_rationales(report)
+        + unresolved_audit_citations(report, case)
+    )
+
+
+def _label(policy_ref: str, control_id: str) -> str:
+    return f"{policy_ref} {control_id}".strip()

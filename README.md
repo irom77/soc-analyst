@@ -336,6 +336,45 @@ See [`examples/splunk-soar-summary.md`](examples/splunk-soar-summary.md) for a r
 live run against the nested Splunk SOAR export, including a table tracing every claim in
 the generated summary back to the field, note, or comment it came from.
 
+### Audit the case against controls
+
+Add `--audit` with a control set to assess the case control by control instead of
+investigating it:
+
+```bash
+uv run case-analyzer examples/splunk-soar.json --format soar \
+  --audit --knowledge examples/audit/controls.json
+```
+
+The run prints a `CaseAuditReport`: a `digest`, one entry per supplied control with a
+`status`, a `rationale`, and cited `evidence_paths`, plus top-level `policy_refs` and
+`documented_exceptions`. `status` is one of `pass`, `fail`, `not_applicable`, or
+`insufficient_evidence`.
+
+The `fail` / `insufficient_evidence` split is the point of the mode. **Absence from an
+export means an action is not documented, not that it did not happen**, so a case with no
+recorded containment step is `insufficient_evidence` for a containment control unless the
+export positively shows containment was refused. `fail` requires evidence of its own.
+
+Controls are ordinary `--knowledge` records requiring only `control_id` and `requirement`;
+unknown fields are preserved and reach the model. The set is validated **before** the
+request — identities must be unique and non-empty — so a malformed control file costs
+nothing to discover, and `--dry-run` validates it too. After the response, `checks.py`
+verifies deterministically that every supplied control received exactly one assessment,
+that no assessment names an unsupplied control, that every status carries a rationale, and
+that every cited path resolves; findings land in `case_analyzer_run.checks.problems`.
+None of that is asked of the model.
+
+```bash
+uv run case-analyzer examples/splunk-soar.json --format soar \
+  --audit --knowledge examples/audit/controls.json --dry-run --explain
+```
+
+See [`examples/audit/`](examples/audit/README.md) for the shipped control set, a recorded
+preview, and the provisional parts of the control record shape. `--audit` and `--summary`
+are mutually exclusive, and an audit is decision support for a human reviewer: it does not
+close a case, clear a control, or write back to any platform.
+
 Add `--explain` to print normalization plus the exact system and human messages before
 the result:
 

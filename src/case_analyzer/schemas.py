@@ -223,6 +223,89 @@ class InvestigationReport(BaseModel):
     )
 
 
+# The audit decision vocabulary, closed for the same reason `Verdict` is: these values
+# drive a compliance record, so they are a contract rather than a prompt suggestion.
+#
+# The `fail` / `insufficient_evidence` split is the whole point of the mode. An export
+# that does not record a containment action is not proof that containment did not happen
+# -- it is proof that the export does not document it. Collapsing the two would turn a
+# gap in the record into a finding of non-compliance, which is a different and much
+# stronger claim than the evidence supports.
+ControlStatus = Literal["pass", "fail", "not_applicable", "insufficient_evidence"]
+
+
+class ControlAssessment(BaseModel):
+    """One supplied control, assessed against one case."""
+
+    # Echoed back verbatim from the supplied control so the coverage check in
+    # `checks.py` can match responses to controls without trusting list order.
+    control_id: str = Field(
+        description="The `control_id` of the control being assessed, copied exactly as supplied."
+    )
+    policy_ref: str = Field(
+        default="",
+        description=(
+            "The `policy_ref` of the control being assessed, copied exactly as supplied. "
+            "Use an empty string only when the supplied control has no `policy_ref`."
+        ),
+    )
+    status: ControlStatus
+    evidence_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Case JSON paths this assessment relied on, rooted at the payload's `case` object: "
+            "dotted keys with `[n]` list indices, e.g. `source_data.artifacts[0].cef.act`. "
+            "Cite the field the evidence was read from, not a paraphrase. Omit rather than "
+            "guess; these are checked mechanically against the payload."
+        ),
+    )
+    rationale: str = Field(
+        description=(
+            "Why this status, in one or two sentences, naming what the case does or does not "
+            "record. Required for every status, including `not_applicable`."
+        )
+    )
+
+
+class CaseAuditReport(BaseModel):
+    """The response schema for `--audit`: one entry per supplied control, and nothing else.
+
+    Deliberately not an `InvestigationReport`. An audit answers "does the record show
+    this control was met" per control; an investigation answers "what happened". Sharing
+    a schema would force one of the two questions into fields built for the other.
+    """
+
+    digest: str = Field(
+        description=(
+            "One or two sentences a reviewer reads first: what was audited and the overall "
+            "state of the record. Not a verdict on the incident."
+        )
+    )
+    assessments: list[ControlAssessment] = Field(
+        default_factory=list,
+        description=(
+            "Exactly one entry per supplied control in `knowledge.records`, and no entries "
+            "for anything else. This is checked mechanically; a missing, duplicated, or "
+            "unknown control is reported as a defect."
+        ),
+    )
+    policy_refs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The distinct `policy_ref` and `policy_version` pairs the supplied controls came "
+            "from, e.g. `SOC-IRP 2026.1`. Record what was applied, do not invent references."
+        ),
+    )
+    documented_exceptions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Exceptions the case or the supplied controls actually record as approved, with "
+            "the control they apply to. An undocumented gap is not an exception; it belongs "
+            "in the relevant assessment as `fail` or `insufficient_evidence`."
+        ),
+    )
+
+
 # Bumped when the saved-result shape changes in a way a consumer must notice. Recorded
 # in every run block so an archived report identifies its own layout.
 REPORT_SCHEMA_VERSION = "1"
@@ -289,5 +372,15 @@ class AnalyzedReport(InvestigationReport):
 
 class AnalyzedSummary(CaseSummary):
     """The saved result of a `--summary` run, provenanced the same way."""
+
+    case_analyzer_run: CaseAnalyzerRun
+
+
+class AnalyzedAudit(CaseAuditReport):
+    """The saved result of an `--audit` run, provenanced the same way.
+
+    A human must review this before it closes a case or changes a compliance record.
+    Nothing here writes back to a source platform, by design.
+    """
 
     case_analyzer_run: CaseAnalyzerRun

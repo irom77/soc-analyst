@@ -27,12 +27,15 @@ from openai import OpenAIError
 from pydantic import BaseModel, ValidationError
 
 from .adapters import source_data_residue
-from .checks import check_report
+from .checks import check_audit, check_report
+from .controls import Control
 from .provenance import build_run_metadata
 from .schemas import (
+    AnalyzedAudit,
     AnalyzedReport,
     AnalyzedSummary,
     CanonicalCase,
+    CaseAuditReport,
     CaseSummary,
     InvestigationReport,
     RunChecks,
@@ -57,6 +60,10 @@ def _system_prompt() -> str:
 
 def _summary_prompt() -> str:
     return _prompt("summary.md")
+
+
+def _audit_prompt() -> str:
+    return _prompt("audit.md")
 
 
 def build_analysis_payload(
@@ -135,6 +142,30 @@ def build_summary_messages(
     """Same case payload as the analysis request, asked for as a narrative summary."""
     return _messages(
         _summary_prompt(),
+        build_analysis_payload(
+            case,
+            knowledge_records=knowledge_records,
+            user_input=user_input,
+            reduce_source_data=reduce_source_data,
+        ),
+    )
+
+
+def build_audit_messages(
+    case: CanonicalCase,
+    *,
+    knowledge_records: list[dict[str, Any]] | None = None,
+    user_input: str = "",
+    reduce_source_data: bool = False,
+) -> list:
+    """Same case payload as the analysis request, asked for as a control-by-control audit.
+
+    The controls travel in `knowledge.records`, which the payload already carries, so an
+    audit sends the same bytes an investigation would -- only the system prompt and the
+    response schema differ.
+    """
+    return _messages(
+        _audit_prompt(),
         build_analysis_payload(
             case,
             knowledge_records=knowledge_records,
@@ -347,5 +378,53 @@ def summarize_case(
             model=resolved.model,
             base_url=resolved.base_url,
             input_file_sha256=input_file_sha256,
+        ),
+    )
+
+
+def audit_case(
+    case: CanonicalCase,
+    controls: list[Control],
+    *,
+    knowledge_records: list[dict[str, Any]] | None = None,
+    user_input: str = "",
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    timeout: float | None = None,
+    input_file_sha256: str = "",
+    reduce_source_data: bool = False,
+) -> AnalyzedAudit:
+    """Assess a case against `controls`, post-check the coverage, and record provenance.
+
+    `controls` is passed separately from `knowledge_records` even though the records are
+    where the controls came from: the parsed list is what the coverage check compares
+    against, and re-parsing it here would let a caller check a response against a control
+    set other than the one that was actually sent.
+    """
+    payload = build_analysis_payload(
+        case,
+        knowledge_records=knowledge_records,
+        user_input=user_input,
+        reduce_source_data=reduce_source_data,
+    )
+    messages = _messages(_audit_prompt(), payload)
+    report, resolved = _request_structured(
+        CaseAuditReport,
+        messages,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        timeout=timeout,
+    )
+    return AnalyzedAudit(
+        **report.model_dump(),
+        case_analyzer_run=build_run_metadata(
+            payload=payload,
+            messages=messages,
+            model=resolved.model,
+            base_url=resolved.base_url,
+            input_file_sha256=input_file_sha256,
+            checks=RunChecks(ran=True, problems=check_audit(report, payload["case"], controls)),
         ),
     )

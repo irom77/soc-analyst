@@ -13,9 +13,11 @@ from case_analyzer import cli, explain_cli
 from case_analyzer.analyzer import LLMProviderError
 from case_analyzer.enrichment_cache import EnrichmentCache, ProviderPacer
 from case_analyzer.schemas import (
+    AnalyzedAudit,
     AnalyzedReport,
     AnalyzedSummary,
     CaseAnalyzerRun,
+    ControlAssessment,
     EvidenceFinding,
     RunChecks,
 )
@@ -345,6 +347,146 @@ class ExplainCliTests(unittest.TestCase):
 
         self.assertEqual(0, status)
 
+
+
+class AuditCliTests(unittest.TestCase):
+    """Improvement-plan item 8: the `--audit` wiring, offline."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        root = Path(self.directory.name)
+        self.case_path = root / "case.json"
+        self.case_path.write_text(
+            json.dumps({"id": "1", "title": "Example", "owner_name": "a.analyst"}), encoding="utf-8"
+        )
+        self.controls_path = root / "controls.json"
+        self.controls_path.write_text(
+            json.dumps(
+                [{"control_id": "IR-1.1", "policy_ref": "SOC-IRP", "requirement": "own it"}]
+            ),
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def _audit_result(self) -> AnalyzedAudit:
+        return AnalyzedAudit(
+            digest="One control assessed.",
+            assessments=[
+                ControlAssessment(
+                    control_id="IR-1.1",
+                    policy_ref="SOC-IRP",
+                    status="pass",
+                    rationale="the export names an owner",
+                )
+            ],
+            case_analyzer_run=_run_block(RunChecks(ran=True)),
+        )
+
+    @patch("case_analyzer.cli.analyze_case")
+    @patch("case_analyzer.cli.summarize_case")
+    @patch("case_analyzer.cli.audit_case")
+    def test_audit_requests_an_audit_and_nothing_else(self, audit_case, summarize_case, analyze_case):
+        audit_case.return_value = self._audit_result()
+        output = io.StringIO()
+        with redirect_stdout(output), redirect_stderr(io.StringIO()):
+            status = cli.main(
+                [str(self.case_path), "--audit", "--knowledge", str(self.controls_path)]
+            )
+
+        self.assertEqual(0, status)
+        analyze_case.assert_not_called()
+        summarize_case.assert_not_called()
+        result = json.loads(output.getvalue())
+        self.assertEqual("pass", result["assessments"][0]["status"])
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_the_parsed_control_set_is_passed_to_the_request(self, audit_case):
+        """The response is checked against the set that was parsed here, not a re-derived one."""
+        audit_case.return_value = self._audit_result()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            cli.main([str(self.case_path), "--audit", "--knowledge", str(self.controls_path)])
+
+        controls = audit_case.call_args.args[1]
+        self.assertEqual([("SOC-IRP", "IR-1.1")], [control.key for control in controls])
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_audit_without_a_control_set_fails_before_any_request(self, audit_case):
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errors):
+            status = cli.main([str(self.case_path), "--audit"])
+
+        self.assertEqual(2, status)
+        audit_case.assert_not_called()
+        self.assertIn("--audit needs a control set", errors.getvalue())
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_a_malformed_control_set_fails_before_any_request(self, audit_case):
+        """The whole point of validating early: a bad set must not cost a paid call."""
+        self.controls_path.write_text(
+            json.dumps(
+                [
+                    {"control_id": "A", "requirement": "x"},
+                    {"control_id": "A", "requirement": "y"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errors):
+            status = cli.main(
+                [str(self.case_path), "--audit", "--knowledge", str(self.controls_path)]
+            )
+
+        self.assertEqual(2, status)
+        audit_case.assert_not_called()
+        self.assertIn("appears 2 times", errors.getvalue())
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_audit_and_summary_together_are_refused(self, audit_case):
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errors):
+            status = cli.main([str(self.case_path), "--audit", "--summary"])
+
+        self.assertEqual(2, status)
+        audit_case.assert_not_called()
+        self.assertIn("pick one", errors.getvalue())
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_audit_dry_run_previews_the_audit_prompt_without_calling_the_llm(self, audit_case):
+        output = io.StringIO()
+        with redirect_stdout(output), redirect_stderr(io.StringIO()):
+            status = cli.main(
+                [
+                    str(self.case_path),
+                    "--audit",
+                    "--knowledge",
+                    str(self.controls_path),
+                    "--dry-run",
+                    "--explain",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        audit_case.assert_not_called()
+        printed = output.getvalue()
+        self.assertIn("structured control-audit request", printed)
+        self.assertIn("Remove --dry-run to request a CaseAuditReport.", printed)
+        self.assertIn("security compliance auditor", printed)
+
+    @patch("case_analyzer.cli.audit_case")
+    def test_a_dry_run_still_validates_the_control_set(self, audit_case):
+        """Previewing an audit is how an operator checks a control file before paying for it."""
+        self.controls_path.write_text(json.dumps([{"control_id": "", "requirement": "x"}]), "utf-8")
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(errors):
+            status = cli.main(
+                [str(self.case_path), "--audit", "--knowledge", str(self.controls_path), "--dry-run"]
+            )
+
+        self.assertEqual(2, status)
+        self.assertIn("empty control_id", errors.getvalue())
 
 if __name__ == "__main__":
     unittest.main()
