@@ -17,6 +17,7 @@ from .analyzer import (
     summarize_case,
 )
 from .enrichment import enrich_case
+from .enrichment_cache import EnrichmentCache, ProviderPacer, default_cache_dir
 from .provenance import sha256_file
 from .schemas import RunChecks
 
@@ -110,6 +111,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Number of enrichment lookups to run at once (default 4)",
     )
     parser.add_argument(
+        "--cache-dir",
+        default=None,
+        help=(
+            "Directory for cached enrichment responses and cross-process pacing state "
+            f"(default {default_cache_dir()}). Cached observable values and provider answers are "
+            "stored there in the clear; use --no-cache where that is not acceptable."
+        ),
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help=(
+            "Contact enrichment providers for every observable and store nothing. Rate-limit "
+            "pacing still applies, because that is the provider's rule rather than a local "
+            "optimization; only its cross-process half needs the cache directory."
+        ),
+    )
+    parser.add_argument(
         "--enrichment-failure-threshold",
         type=int,
         default=3,
@@ -183,10 +202,14 @@ def _report_checks(checks: RunChecks) -> None:
 
 def _report_enrichment(enrichment) -> None:
     counts = Counter(item.lookup_status for item in enrichment.observations)
+    # Reported so a run that made no requests is distinguishable from one that did. Each
+    # cached observation also carries `"cache": true` and its original retrieval time.
+    cached = sum(1 for item in enrichment.observations if item.details.get("cache"))
     print(
         "case-analyzer: enrichment: "
         f"found={counts['found']} not_found={counts['not_found']} "
         f"skipped={counts['skipped']} error={counts['error']} "
+        f"cached={cached} "
         f"truncated={'yes' if enrichment.truncated else 'no'} "
         f"stopped_early={'yes' if enrichment.stopped_early else 'no'}",
         file=sys.stderr,
@@ -235,8 +258,14 @@ def main(argv=None) -> int:
                     "only the LLM call is skipped.",
                     file=sys.stderr,
                 )
+            cache_dir = Path(args.cache_dir) if args.cache_dir else default_cache_dir()
             enrichment = enrich_case(
                 case,
+                cache=None if args.no_cache else EnrichmentCache(cache_dir),
+                # The pacer runs either way. Without a cache directory it keeps its state
+                # in this process only, which still prevents concurrent workers from
+                # firing at a rate-limited provider together.
+                pacer=ProviderPacer(state_dir=None if args.no_cache else cache_dir),
                 limit=args.enrichment_limit,
                 timeout=args.enrichment_timeout,
                 budget=args.enrichment_budget or None,

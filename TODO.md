@@ -13,13 +13,12 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
 from the 2026-08-18 limitations review. Its eval-harness prerequisite, prompt-injection
-item, all of Tier 1, and Tier 2 item 6 are done (see "Completed" below); the remaining
-work — enrichment caching, then full-URL/email lookups and the dedicated audit mode — is
-open there and not duplicated here. One design question in that plan's review section
-still gates Tier 2: how provider pacing reconciles with the enrichment time budget.
+item, and all of Tier 1 and Tier 2 are done (see "Completed" below); the remaining work —
+full-URL/email lookups, then the dedicated audit mode — is open there and not duplicated
+here. Every design question in that plan's review section is now resolved.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (154 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (179 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -34,8 +33,8 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   review before the result can close a case or change a compliance record. Add offline
   schema and prompt tests plus representative recorded examples before enabling any
   provider-backed automation.
-- [ ] Address payload quality, duplicated `source_data`, provider cost and rate limits, and excessive noisy enrichment. Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7); VirusTotal has no throttle against its ~4 request/minute public tier (L-5). L-5 is not theoretical: two live runs of the single-observable enrichment example minutes apart returned `HTTP 429` on the second, so a 25-observable run on the public tier will mostly record quota errors. Caching plus a request interval would fix both runs.
-- [ ] Evaluate additional free enrichment providers in this order: ThreatFox for domain/IP IOC matches, GreyNoise Community for internet-scanner context, and URLhaus after complete URL extraction is supported. Keep provider results separately attributed, cache responses, respect enrichment limits, and treat `not_found` as inconclusive. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
+- [ ] Address payload quality, duplicated `source_data`, and excessive noisy enrichment. Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7) and is still open; see Tier 4 item 10 of the improvement plan. The provider cost and rate-limit half (L-5) is done — the response cache and 15-second VirusTotal pacing landed with Tier 2 item 5, which is what the `HTTP 429` on the second live run called for.
+- [ ] Evaluate additional free enrichment providers in this order: ThreatFox for domain/IP IOC matches, GreyNoise Community for internet-scanner context, and URLhaus after complete URL extraction is supported. Keep provider results separately attributed, respect enrichment limits, and treat `not_found` as inconclusive; caching and per-provider pacing are now handled centrally in `enrichment_cache.py`, so a new provider needs a request id and, if it publishes a per-minute limit, an interval. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
 - [x] Add optional AbuseIPDB public-IP reputation through the v2 `check` endpoint. It uses a 30-day report window, runs only when `ABUSEIPDB_API_KEY` is configured, and keeps the result separately attributed. The Standard tier currently permits 1,000 `check` requests per day; higher account tiers have higher limits. Operators remain responsible for confirming that their account and use comply with the provider's current terms.
 - [x] Add `--summary`, which asks the model to describe the input case in prose and stops, printing `{"summary": ...}` instead of an `InvestigationReport`. It reuses the analysis payload under a separate `prompts/summary.md` system prompt that forbids a verdict, severity, attack chain, or remediation, and returns the `CaseSummary` schema. `analyze_case` and `summarize_case` now share one provider call and its sanitized error mapping. With `--dry-run` no request is sent; `--explain` shows the summary prompt.
 - [ ] Remove the deprecated `explain_case_analysis` and `explain-case-analysis` aliases in the next breaking release; use `case-analyzer --explain` instead. The `--help` text already states that the alias forwards neither `--output` nor `--enrich` (L-9).
@@ -43,6 +42,41 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
 ## Extraction coverage
 
 - [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
+
+## Completed (2026-08-19 enrichment caching and pacing)
+
+- [x] Tier 2 item 5 — response cache plus provider pacing, in `enrichment_cache.py`
+  (`EnrichmentCache`, `ProviderPacer`) with `--cache-dir` and `--no-cache`. Fixes the
+  failure recorded further down this file — HTTP 429 on a second run minutes later — and
+  the duplicated-cost concern in one change.
+
+  Responses are keyed by provider, endpoint-and-parameters, observable type, and value
+  together; a version marker in the per-provider request id retires entries when the
+  request or the stored detail set changes. Writes are atomic. TTL is per provider: 15
+  minutes for DNS, an hour for reputation, a day for registration data. Only `found` and
+  `not_found` are stored — caching an error would freeze a timeout or a 429 into every
+  later run, which is the opposite of the point. A cache hit keeps the original
+  `retrieved_at`, so a saved block never claims to have just fetched hour-old data.
+
+  Pacing spaces VirusTotal requests 15 seconds apart for the public 4/min tier, claiming
+  the next slot under a lock *before* waiting, so concurrent workers take distinct slots
+  instead of all sleeping and then firing together. Cross-process it is best-effort
+  through the cache directory, documented rather than closed.
+
+  Review point 3 was signed off and is recorded in the plan: waits consume
+  `--enrichment-budget` (a free wait would let a run outlast a wall-clock limit
+  invisibly), overflow is `skipped` with a reason naming the interval rather than a
+  failure, and starvation is *removed* rather than mitigated — lookups run in two passes
+  so every unpaced provider finishes before the first paced reservation. Measured offline:
+  9 of 9 RDAP lookups completed while 6 of 9 VirusTotal lookups were paced out, inside the
+  budget. At defaults this means about four uncached VirusTotal lookups per cold run;
+  raise the budget for a large cold case, and a repeat run within the TTL costs nothing.
+
+  The cache writes observable values and provider answers outside the case file in plain
+  JSON. Readable on purpose — an uninspectable cache is unauditable — but the directory
+  now deserves the same handling as the cases, and `--no-cache` is the way out.
+
+  179 tests pass and `ruff check src tests` is clean.
 
 ## Completed (2026-08-19 internationalized domains)
 

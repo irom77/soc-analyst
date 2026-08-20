@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 import idna
 
+from .enrichment_cache import EnrichmentCache, ProviderPacer, request_fingerprint
 from .schemas import (
     CanonicalCase,
     CaseAnalyzerEnrichment,
@@ -29,6 +30,17 @@ _ENRICHMENT_WORDS = ("enrichment", "reputation", "threat intelligence", "threat 
 _USER_AGENT = "soc-analyst-case-analyzer/0.1"
 _MAX_CONTEXT_SNIPPETS = 3
 _HASH_ALGORITHMS = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}
+
+# The cache identity of each provider's request: endpoint, the parameters that vary the
+# answer, and a trailing version marker for the reduced detail set stored below. Bump the
+# marker whenever any of those change, so entries written by the older shape stop
+# matching rather than being read back as if they were current.
+_REQUEST_IDS = {
+    "cloudflare-dns": "https://cloudflare-dns.com/dns-query?type=A|v1",
+    "rdap": "iana-rdap-bootstrap|v1",
+    "virustotal": "https://www.virustotal.com/api/v3|v1",
+    "abuseipdb": "https://api.abuseipdb.com/api/v2/check?maxAgeInDays=30|v1",
+}
 _KIND_LABELS = {"ip": "IP address", "domain": "domain", "file_hash": "file hash"}
 
 # Type hints and field names that resolve to an observable. The boolean records
@@ -654,6 +666,8 @@ def enrich_case(
     virustotal_api_key: str | None = None,
     abuseipdb_lookup: Callable[[str, float, str], tuple[str, str, dict[str, Any]]] = _abuseipdb_lookup,
     abuseipdb_api_key: str | None = None,
+    cache: EnrichmentCache | None = None,
+    pacer: ProviderPacer | None = None,
 ) -> CaseAnalyzerEnrichment:
     if limit < 1:
         raise ValueError("The enrichment limit must be at least 1.")
@@ -697,14 +711,48 @@ def enrich_case(
             "reason": "The overall enrichment time budget was exhausted before this lookup could finish."
         }
 
-    def _call(provider: str, lookup: Callable[[float], tuple[str, str, dict[str, Any]]]):
-        """Run one provider lookup, honoring the time budget and the circuit breaker."""
+    def _paced_out(provider: str, wait: float):
+        """The provider's own rate limit does not fit in what is left of the budget."""
         nonlocal stopped_early
+        with stop_lock:
+            stopped_early = True
+        return "skipped", provider, {
+            "reason": (
+                f"The minimum {wait:.0f}s interval between {provider} requests did not fit in the "
+                "remaining enrichment time budget."
+            )
+        }
+
+    def _call(
+        provider: str,
+        lookup: Callable[[float], tuple[str, str, dict[str, Any]]],
+        *,
+        kind: str = "",
+        value: str = "",
+    ):
+        """Run one provider lookup, honoring the cache, the time budget, pacing, and the breaker.
+
+        The order of the gates is deliberate. The cache comes first, because a hit costs
+        no request, no budget, and no pacing slot — that is what makes a second run over
+        the same case cheap. The budget and the circuit breaker come next, so a slot is
+        never reserved for a lookup that is not going to happen. Pacing is last, and its
+        wait is spent from the same budget as the request itself: the budget is a
+        wall-clock bound on enrichment, and a wait that did not count against it would let
+        a run quietly outlast the limit the operator asked for.
+        """
+        nonlocal stopped_early
+        fingerprint = None
+        if cache is not None and kind and value:
+            fingerprint = request_fingerprint(provider, _REQUEST_IDS[provider], kind, value)
+            hit = cache.get(fingerprint)
+            if hit is not None:
+                return hit.status, hit.provider, {**hit.details, "cache": True}, hit.cached_at
         request_timeout = timeout
+        remaining = None
         if deadline is not None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return _budget_exhausted(provider)
+                return (*_budget_exhausted(provider), None)
             # Cap the request itself, so an in-flight lookup cannot outlive the budget.
             request_timeout = min(timeout, remaining)
         if breaker.is_open(provider):
@@ -712,28 +760,57 @@ def enrich_case(
                 stopped_early = True
             return "skipped", provider, {
                 "reason": f"Lookups against {provider} stopped after {failure_threshold} consecutive failures."
-            }
+            }, None
+        if pacer is not None:
+            wait = pacer.reserve(provider, remaining=remaining)
+            if wait is None:
+                return (*_paced_out(provider, pacer.interval(provider)), None)
+            if wait > 0:
+                time.sleep(wait)
+                if deadline is not None:
+                    # The wait consumed budget, so the request's own timeout shrinks with it.
+                    request_timeout = min(timeout, max(0.0, deadline - time.monotonic()))
+                    if request_timeout <= 0:
+                        return (*_budget_exhausted(provider), None)
         try:
             status, answered_by, details = lookup(request_timeout)
         except _PROVIDER_ERRORS as exc:
             if deadline is not None and time.monotonic() >= deadline:
                 # The budget cut the request short; that is not evidence against the provider.
-                return _budget_exhausted(provider)
+                return (*_budget_exhausted(provider), None)
             breaker.record(provider, True)
-            return "error", provider, {"error": f"{type(exc).__name__}: {exc}"}
+            return "error", provider, {"error": f"{type(exc).__name__}: {exc}"}, None
         breaker.record(provider, status == "error")
-        return status, answered_by, details
+        if cache is not None and fingerprint is not None:
+            cache.put(fingerprint, status, answered_by, details)
+        return status, answered_by, details, None
 
-    def _observe(item: tuple[tuple[str, str], dict[str, Any]]) -> list[EnrichmentObservation]:
+    def _retrieved_at(cached_at: float | None) -> datetime:
+        """When the recorded answer was actually obtained.
+
+        A cache hit is stamped with the original request's time rather than this run's, so
+        a saved enrichment block never claims to have just retrieved hour-old data. The
+        run's own time is `CaseAnalyzerEnrichment.generated_at`.
+        """
+        return retrieved_at if cached_at is None else datetime.fromtimestamp(cached_at, UTC)
+
+    def _shared(item: tuple[tuple[str, str], dict[str, Any]]) -> dict[str, Any]:
+        (_, _), source = item
+        return {
+            "source_paths": list(dict.fromkeys(source["paths"])),
+            "unicode_values": list(dict.fromkeys(source["unicode"])),
+            "artifact_context": list(dict.fromkeys(source["context"]))[:_MAX_CONTEXT_SNIPPETS],
+        }
+
+    def _observe_primary(item: tuple[tuple[str, str], dict[str, Any]]) -> list[EnrichmentObservation]:
+        """The unpaced observation every observable gets: validation, DNS, or RDAP."""
         (kind, value), source = item
         valid = source["valid"]
         declared = source["declared"]
-        source_paths = list(dict.fromkeys(source["paths"]))
-        unicode_values = list(dict.fromkeys(source["unicode"]))
-        context = list(dict.fromkeys(source["context"]))[:_MAX_CONTEXT_SNIPPETS]
         provider = "local-validation"
         details: dict[str, Any] = {}
         lookup_status = "skipped"
+        cached_at = None
         if not valid:
             details = {"reason": f"Invalid {_KIND_LABELS[kind]} syntax"}
         elif kind == "file_hash":
@@ -742,48 +819,57 @@ def enrich_case(
                 "reason": "No keyless provider looks up file hashes; VirusTotal is used when a key is configured.",
             }
         elif kind == "domain":
-            lookup_status, provider, details = _call(
-                "cloudflare-dns", lambda request_timeout: domain_lookup(value, request_timeout)
+            lookup_status, provider, details, cached_at = _call(
+                "cloudflare-dns",
+                lambda request_timeout: domain_lookup(value, request_timeout),
+                kind=kind,
+                value=value,
             )
         else:
-            lookup_status, provider, details = _call(
-                "rdap", lambda request_timeout: ip_lookup(value, request_timeout)
+            lookup_status, provider, details, cached_at = _call(
+                "rdap",
+                lambda request_timeout: ip_lookup(value, request_timeout),
+                kind=kind,
+                value=value,
             )
-        results = [
+        return [
             EnrichmentObservation(
                 observable_type=kind,
                 value=value,
                 valid=valid,
-                unicode_values=unicode_values,
-                source_paths=source_paths,
                 provider=provider,
-                retrieved_at=retrieved_at,
+                retrieved_at=_retrieved_at(cached_at),
                 lookup_status=lookup_status,
                 details=details,
-                artifact_context=context,
                 comparison_with_case=_comparison(kind, valid, declared, lookup_status),
+                **_shared(item),
             )
         ]
+
+    def _observe_reputation(item: tuple[tuple[str, str], dict[str, Any]]) -> list[EnrichmentObservation]:
+        """The reputation observations, which are the paced ones."""
+        (kind, value), source = item
+        valid = source["valid"]
+        results: list[EnrichmentObservation] = []
         virustotal_eligible = valid and (
             kind in {"domain", "file_hash"} or ipaddress.ip_address(value).is_global
         )
         if virustotal_eligible and virustotal_api_key:
-            vt_status, vt_provider, vt_details = _call(
+            vt_status, vt_provider, vt_details, vt_cached_at = _call(
                 "virustotal",
                 lambda request_timeout: virustotal_lookup(kind, value, request_timeout, virustotal_api_key),
+                kind=kind,
+                value=value,
             )
             results.append(
                 EnrichmentObservation(
                     observable_type=kind,
                     value=value,
                     valid=True,
-                    unicode_values=unicode_values,
-                    source_paths=source_paths,
                     provider=vt_provider,
-                    retrieved_at=retrieved_at,
+                    retrieved_at=_retrieved_at(vt_cached_at),
                     lookup_status=vt_status,
                     details=vt_details,
-                    artifact_context=context,
                     comparison_with_case=EnrichmentComparison(
                         status="inconclusive",
                         explanation=(
@@ -791,26 +877,26 @@ def enrich_case(
                             "or automatically resolve existing case conclusions."
                         ),
                     ),
+                    **_shared(item),
                 )
             )
         abuseipdb_eligible = valid and kind == "ip" and ipaddress.ip_address(value).is_global
         if abuseipdb_eligible and abuseipdb_api_key:
-            abuse_status, abuse_provider, abuse_details = _call(
+            abuse_status, abuse_provider, abuse_details, abuse_cached_at = _call(
                 "abuseipdb",
                 lambda request_timeout: abuseipdb_lookup(value, request_timeout, abuseipdb_api_key),
+                kind=kind,
+                value=value,
             )
             results.append(
                 EnrichmentObservation(
                     observable_type=kind,
                     value=value,
                     valid=True,
-                    unicode_values=unicode_values,
-                    source_paths=source_paths,
                     provider=abuse_provider,
-                    retrieved_at=retrieved_at,
+                    retrieved_at=_retrieved_at(abuse_cached_at),
                     lookup_status=abuse_status,
                     details=abuse_details,
-                    artifact_context=context,
                     comparison_with_case=EnrichmentComparison(
                         status="inconclusive",
                         explanation=(
@@ -818,14 +904,33 @@ def enrich_case(
                             "or automatically resolve existing case conclusions."
                         ),
                     ),
+                    **_shared(item),
                 )
             )
         return results
 
     if selected:
         with ThreadPoolExecutor(max_workers=min(concurrency, len(selected))) as executor:
-            # `map` preserves the priority order regardless of completion order.
-            grouped_observations = list(executor.map(_observe, selected))
+            # Two passes, not one, and this is what keeps pacing from starving the
+            # providers that have no rate limit. A worker sleeping out VirusTotal's
+            # interval occupies its thread; in a single pass those sleeps would sit in
+            # front of the DNS and RDAP lookups still queued behind them, and the budget
+            # would expire on waiting rather than on answers. Running every unpaced
+            # lookup to completion first removes the contention instead of mitigating it.
+            #
+            # The cost is the overlap given up between the passes. It is a smaller loss
+            # than it looks: cached reputation answers never reach the pacer at all, and
+            # an uncached one was going to serialize regardless.
+            #
+            # `map` preserves the priority order within each pass, so the observation
+            # order per observable is unchanged: primary, then VirusTotal, then AbuseIPDB.
+            primary = list(executor.map(_observe_primary, selected))
+            reputation = (
+                list(executor.map(_observe_reputation, selected))
+                if (virustotal_api_key or abuseipdb_api_key)
+                else [[] for _ in selected]
+            )
+        grouped_observations = [first + second for first, second in zip(primary, reputation, strict=True)]
     else:
         grouped_observations = []
 

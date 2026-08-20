@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from case_analyzer import cli, explain_cli
 from case_analyzer.analyzer import LLMProviderError
+from case_analyzer.enrichment_cache import EnrichmentCache, ProviderPacer
 from case_analyzer.schemas import (
     AnalyzedReport,
     AnalyzedSummary,
@@ -228,6 +229,46 @@ class ExplainCliTests(unittest.TestCase):
 
         self.assertEqual(0, status)
         self.assertEqual("test-abuse-key", enrich.call_args.kwargs["abuseipdb_api_key"])
+
+    def test_cache_directory_reaches_both_the_cache_and_the_pacer(self):
+        cache_dir = self.case_path.parent / "cache"
+        with patch("case_analyzer.cli.enrich_case") as enrich:
+            enrich.return_value = SimpleNamespace(observations=[], truncated=False, stopped_early=False)
+            status = cli.main(
+                [
+                    str(self.case_path),
+                    "--enrich",
+                    "--dry-run",
+                    "--allow-enrichment-in-dry-run",
+                    "--cache-dir",
+                    str(cache_dir),
+                ]
+            )
+
+        self.assertEqual(0, status)
+        kwargs = enrich.call_args.kwargs
+        self.assertIsInstance(kwargs["cache"], EnrichmentCache)
+        self.assertIsInstance(kwargs["pacer"], ProviderPacer)
+        self.assertEqual(cache_dir, kwargs["cache"]._directory)
+        self.assertEqual(cache_dir, kwargs["pacer"]._state_dir)
+
+    def test_no_cache_drops_the_cache_but_keeps_pacing(self):
+        """The provider's rate limit is not a local optimization to opt out of.
+
+        Only the cross-process half of pacing depends on the directory, so `--no-cache`
+        leaves a pacer with no shared state rather than no pacer.
+        """
+        with patch("case_analyzer.cli.enrich_case") as enrich:
+            enrich.return_value = SimpleNamespace(observations=[], truncated=False, stopped_early=False)
+            status = cli.main(
+                [str(self.case_path), "--enrich", "--dry-run", "--allow-enrichment-in-dry-run", "--no-cache"]
+            )
+
+        self.assertEqual(0, status)
+        kwargs = enrich.call_args.kwargs
+        self.assertIsNone(kwargs["cache"])
+        self.assertIsInstance(kwargs["pacer"], ProviderPacer)
+        self.assertIsNone(kwargs["pacer"]._state_dir)
 
     def test_enrichment_prints_summary_without_corrupting_json_stdout(self):
         self.case_path.write_text(

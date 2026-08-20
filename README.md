@@ -122,6 +122,49 @@ request. JSON output remains on standard output or in the file selected by `--ou
 See [`examples/enrichment/`](examples/enrichment/) for a recorded enriched payload and
 the command used to regenerate it.
 
+### Caching and rate limits
+
+Provider responses are cached on disk between runs, keyed by provider, endpoint, request
+parameters, observable type, and value together — not by provider and value, which would
+collide across observable types and across a provider's own API versions. Time to live is
+per provider: 15 minutes for DNS, an hour for reputation, a day for registration data.
+Only settled answers are stored. An error is not cached, so a timeout or an HTTP 429 is
+retried on the next run instead of being frozen into it. A cached observation carries
+`"cache": true` in its details and keeps the `retrieved_at` of the original request, so a
+saved enrichment block never claims to have just fetched hour-old data; the run's own time
+is the block's `generated_at`.
+
+Providers with a published per-minute limit are paced: VirusTotal's public tier allows 4
+requests a minute, so requests to it are spaced 15 seconds apart. The spacing is enforced
+across concurrent workers by claiming the next slot before waiting, rather than by each
+worker sleeping and then firing together. Across processes it is best-effort — the claim
+is written to the cache directory with no lock, so two processes starting at the same
+instant can still overlap, and the provider's own 429 remains the backstop.
+
+**Pacing waits are spent from `--enrichment-budget`,** because that budget is a
+wall-clock bound on enrichment and a free wait would let a run quietly outlast it. The
+consequence is worth planning around: at 15 seconds apart, about four uncached VirusTotal
+lookups fit in the 60-second default. The rest are recorded as `skipped` with a reason
+naming the interval — distinct from a budget exhaustion or a provider failure — and the
+run sets `stopped_early`. Raise `--enrichment-budget` for a cold run over a large case;
+a repeat run within the TTL costs no requests at all.
+
+Unpaced providers cannot be starved by paced ones. Every Cloudflare DNS and RDAP lookup
+completes before the first VirusTotal or AbuseIPDB request is attempted, so a worker
+waiting out a rate limit is never holding a thread that a keyless lookup still needed.
+
+`--cache-dir` sets the location (default `~/.cache/case-analyzer/enrichment`, honoring
+`XDG_CACHE_HOME` or `LOCALAPPDATA`). `--no-cache` turns the cache off; pacing still
+applies, because a rate limit is the provider's rule rather than a local optimization,
+and only its cross-process half needs the directory. A cache directory that cannot be
+read or written costs requests, not correctness — the run proceeds without it.
+
+Note what the cache stores: observable values taken from your cases — addresses, domains,
+file hashes — and the providers' answers about them, written outside the case file in
+plain JSON. That is deliberate, because a cache you cannot inspect is one you cannot
+audit, but it means the directory deserves the same handling as the cases themselves. Use
+`--no-cache` where it does not.
+
 LLM failures stop the analysis without writing a report. Authentication failures,
 rate or quota limits, timeouts, connection failures, provider HTTP errors, and model
 responses that do not match the requested schema are reported as concise

@@ -190,7 +190,58 @@ prose" into "spot-checkable claims" with no second LLM call.
 
 ## Tier 2 — enrichment robustness (partly tracked in TODO.md)
 
-### 5. Response cache plus provider pacing
+### 5. Response cache plus provider pacing — DONE (2026-08-19)
+
+Implemented as `enrichment_cache.py` (`EnrichmentCache`, `ProviderPacer`), wired into
+`enrich_case` and exposed as `--cache-dir` / `--no-cache`. Built as specified: the
+fingerprint is provider, endpoint-and-parameters (one `request_id` string per provider,
+with a version marker to retire entries when the request or the stored detail set
+changes), observable type, and value; writes are atomic; TTL is per provider — 15 minutes
+for DNS, an hour for reputation, a day for registration data; cache hits record
+`"cache": true`.
+
+Three things the implementation settled that the item left open:
+
+- **Only settled answers are cached.** `error` and `skipped` are not. Caching an error
+  would freeze a timeout or an HTTP 429 — the very failure this item exists to fix — into
+  every later run.
+- **A cache hit keeps the original `retrieved_at`.** Stamping it with the run's time
+  would have a saved block claim it had just fetched hour-old data. The run's own time is
+  already `generated_at` on the block.
+- **The stored fingerprint is re-checked on read**, not trusted from the file name, so a
+  layout change or a truncated write reads as a miss rather than as an answer about a
+  different observable.
+
+**Review point 3, resolved.** Signed off 2026-08-19:
+
+- *Pacing waits consume the budget.* `--enrichment-budget` is documented as a wall-clock
+  bound on enrichment and already caps each request's timeout; a free wait would let a run
+  quietly outlast the limit the operator set, which is worse than skipping because it is
+  invisible. The consequence is real and is documented rather than hidden: at 15s spacing,
+  about four uncached VirusTotal lookups fit in the 60s default.
+- *Overflow becomes `skipped`*, with a reason naming the interval — distinct from budget
+  exhaustion and from a circuit-breaker skip — and sets `stopped_early`. Nothing failed,
+  so it is not an error. A refused reservation claims no slot, so the time stays available
+  to a lookup that can still use it.
+- *Starvation is removed rather than mitigated.* Lookups now run in two passes: every
+  unpaced provider (DNS, RDAP) completes before the first paced reservation is made, so a
+  worker sleeping out a rate limit can never hold a thread a keyless lookup needed. The
+  cost is the overlap given up between passes, which is small because cached reputation
+  answers never reach the pacer at all. Measured offline over nine observables with a 5s
+  budget and a 2s interval: 9 of 9 RDAP lookups completed, 3 VirusTotal requests fit, 6
+  were paced out, and the run finished inside the budget.
+- *Cross-process pacing stays best-effort*, as the point anticipated. The claim is written
+  to the cache directory with no lock or lease, so two processes reserving at the same
+  instant can both proceed; the provider's 429 is the backstop. Documented on the class
+  and in the README rather than closed, because a real lease is more machinery than a
+  courtesy rate limit warrants.
+
+One consequence worth stating plainly: the cache writes observable values from cases —
+addresses, domains, file hashes — and provider answers about them outside the case file,
+in the clear. Readability is the point, since a cache that cannot be inspected cannot be
+audited, but the directory now deserves the same handling as the cases. `--no-cache` is
+the answer where that is not acceptable.
+
 
 Small on-disk cache keyed by a canonical request fingerprint — provider, endpoint,
 observable type and value, and request parameters — with a per-provider TTL.
@@ -316,12 +367,12 @@ Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken firs
 because they were the only Tier 1 items with no open review question; item 1 followed
 once review points 1 and 2 were decided, which is recorded under the item itself.
 
-Tier 1 is complete, and Tier 2 item 6 with it — it was taken next because review point 4
-turned out to be answerable from measurement rather than preference. Item 5 remains
-blocked on review point 3 (whether pacing waits consume the enrichment budget, what
-becomes of the overflow, and how a paced provider avoids starving faster ones); item 7 is
-sequenced after item 5. Tier 3 item 8 still needs its own design pass against a real
-control set.
+Tier 1 is complete, and so are Tier 2 items 5 and 6. Every review point is resolved.
+Item 7 (full-URL and email lookups) was sequenced after item 5 and is now unblocked — the
+cache and pacing it waited for are in place, which is what keeps a new provider from
+multiplying request volume. Tier 3 item 8 still needs its own design pass against a real
+control set. Tier 4 items 10 and 11 remain propose-and-discuss; the plan's own advice on
+11 is to wait until someone actually hits the input limit.
 
 ## Review — to be verified before implementation
 
@@ -342,13 +393,16 @@ resolved before work begins:
    public methods return the assembled result or introduce a higher-level run API and
    state clearly which API guarantees provenance. The original-file hash must remain
    optional for callers that supply an already-parsed case rather than a file.
-3. **Reconcile provider pacing with the enrichment budget.** At roughly one
+3. **Resolved (2026-08-19).** **Reconcile provider pacing with the enrichment budget.** At roughly one
    VirusTotal request every 15 seconds, only a few uncached requests fit within the
    current 60-second default budget. Define whether pacing waits consume that budget,
    whether excess requests become `skipped`, and how scheduling prevents a paced
    provider from starving faster providers. Atomic cache writes do not coordinate
    request start times across processes, so cross-process pacing needs an explicit
    lock or lease if it is intended to be stronger than best-effort.
+   Answered under item 5: waits consume the budget, overflow is `skipped` with a reason
+   naming the interval, starvation is removed by running unpaced providers to completion
+   first, and cross-process pacing is documented as best-effort rather than made stronger.
 4. **Resolved (2026-08-19).** **Specify IDN normalization behavior.** Choose and document the applicable IDNA
    standard or library (for example, modern UTS #46 processing versus Python's
    built-in codec), because their handling of some Unicode domain names differs.
