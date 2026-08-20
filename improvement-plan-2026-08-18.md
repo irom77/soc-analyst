@@ -393,7 +393,11 @@ As sketched in TODO.md; keep v1 scope tight:
 Built as specified, with every bullet above implemented: `prompts/audit.md`, a
 `CaseAuditReport` of `ControlAssessment` entries, `controls.py` validating the set before
 the request, and `check_audit` in `checks.py` doing coverage in Python. 61 offline tests.
-Shipped without a live run, matching the `--summary` rollout; the recorded example in
+First measured live on 2026-08-20, after shipping offline the way `--summary` did: three
+audit cases over one control set, all passing, with the asserted-compliance case returning
+`insufficient_evidence` rather than `pass` and the injected exception order refused
+outright. See [`evals/audit-mode-2026-08-20.md`](evals/audit-mode-2026-08-20.md) for what
+that does and does not establish. The recorded example in
 [`examples/audit/`](examples/audit/README.md) is a `--dry-run --explain` preview rather
 than model output, and is labeled as such.
 
