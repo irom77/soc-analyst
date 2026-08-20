@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 from case_analyzer.analyzer import LLMProviderError
+from case_analyzer.controls import parse_controls
 from case_analyzer.evals import (
+    AUDIT_MODE,
     EvalCase,
     ForbiddenContent,
     check_report,
@@ -48,7 +50,12 @@ class ManifestTests(unittest.TestCase):
         self.assertGreaterEqual(len(entries), 6)
         for entry in entries:
             self.assertTrue(entry.path.is_file(), entry.path)
-            self.assertTrue(entry.allowed_verdicts, entry.case_id)
+            self.assertTrue(entry.expectation, entry.case_id)
+            if entry.mode == AUDIT_MODE:
+                self.assertTrue(entry.controls, entry.case_id)
+                self.assertTrue(entry.expected_statuses, entry.case_id)
+            else:
+                self.assertTrue(entry.allowed_verdicts, entry.case_id)
             json.loads(entry.path.read_text(encoding="utf-8"))
 
     def test_repository_manifest_wires_user_input_and_injection_checks(self):
@@ -153,7 +160,7 @@ class RunBenchmarkTests(unittest.TestCase):
 
         (result,) = run_benchmark([_entry()], analyze, samples=3)
         self.assertEqual(result.status, "PASS")
-        self.assertEqual(len(result.verdicts), 3)
+        self.assertEqual(len(result.outcomes), 3)
         self.assertAlmostEqual(result.agreement, 2 / 3)
 
     def test_reports_are_handed_to_the_callback(self):
@@ -170,3 +177,213 @@ class RunBenchmarkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _audit_entry(**overrides):
+    controls = parse_controls(
+        [
+            {"control_id": "IR-1.1", "policy_ref": "SOC-IRP", "requirement": "own it"},
+            {"control_id": "IR-4.2", "policy_ref": "SOC-IRP", "requirement": "contain it"},
+        ]
+    )
+    fields = {
+        "case_id": "audit-example",
+        "scenario": "Example audit",
+        "path": _REPO_ROOT / "evals" / "cases" / "audit-asserted-compliance.json",
+        "mode": AUDIT_MODE,
+        "controls": controls,
+        "control_records": [control.model_dump() for control in controls],
+        "expected_statuses": {"IR-1.1": ["pass"], "IR-4.2": ["insufficient_evidence"]},
+    }
+    fields.update(overrides)
+    return EvalCase(**fields)
+
+
+def _audit_report(statuses, **overrides):
+    fields = {
+        "digest": "Audited.",
+        "policy_refs": ["SOC-IRP 2026.1"],
+        "documented_exceptions": [],
+        "assessments": [
+            {
+                "control_id": control_id,
+                "policy_ref": "SOC-IRP",
+                "status": status,
+                "rationale": "because",
+                "evidence_paths": [],
+            }
+            for control_id, status in statuses.items()
+        ],
+    }
+    fields.update(overrides)
+    return fields
+
+
+class AuditManifestTests(unittest.TestCase):
+    """Audit entries are validated at load, so a typo fails before a live run is paid for."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        (self.root / "case.json").write_text("{}", encoding="utf-8")
+        (self.root / "controls.json").write_text(
+            json.dumps([{"control_id": "IR-1.1", "requirement": "own it"}]), encoding="utf-8"
+        )
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def _write(self, **overrides):
+        entry = {
+            "id": "audit-case",
+            "file": "case.json",
+            "mode": "audit",
+            "controls_file": "controls.json",
+            "expected_statuses": {"IR-1.1": ["pass"]},
+        }
+        entry.update(overrides)
+        manifest = self.root / "manifest.json"
+        manifest.write_text(json.dumps([entry]), encoding="utf-8")
+        return manifest
+
+    def test_an_audit_entry_loads_its_control_set(self):
+        entries = load_manifest(self._write())
+
+        self.assertEqual(AUDIT_MODE, entries[0].mode)
+        self.assertEqual([("", "IR-1.1")], [control.key for control in entries[0].controls])
+        self.assertEqual([{"control_id": "IR-1.1", "requirement": "own it"}], entries[0].control_records)
+
+    def test_an_unknown_mode_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(mode="summary"))
+
+        self.assertIn("mode must be one of", str(caught.exception))
+
+    def test_an_audit_entry_without_controls_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(controls_file=None))
+
+        self.assertIn("needs controls_file", str(caught.exception))
+
+    def test_a_control_set_the_cli_would_refuse_is_refused_here_too(self):
+        """A benchmark set the tool itself rejects would not be measuring the real thing."""
+        (self.root / "controls.json").write_text(
+            json.dumps([{"control_id": "IR-1.1", "requirement": ""}]), encoding="utf-8"
+        )
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write())
+
+        self.assertIn("empty requirement", str(caught.exception))
+
+    def test_expecting_a_status_for_an_unsupplied_control_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(expected_statuses={"IR-9.9": ["pass"]}))
+
+        self.assertIn("not in the control set", str(caught.exception))
+
+    def test_a_misspelled_status_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(expected_statuses={"IR-1.1": ["passed"]}))
+
+        self.assertIn("unknown status", str(caught.exception))
+
+    def test_a_control_id_reused_across_policies_is_refused(self):
+        """The tool allows it; a benchmark keyed by bare control_id cannot."""
+        (self.root / "controls.json").write_text(
+            json.dumps(
+                [
+                    {"control_id": "4.2", "policy_ref": "SOC-IRP", "requirement": "a"},
+                    {"control_id": "4.2", "policy_ref": "DATA-HANDLING", "requirement": "b"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(expected_statuses={"4.2": ["pass"]}))
+
+        self.assertIn("globally unique control_id", str(caught.exception))
+
+    def test_an_analysis_entry_still_needs_allowed_verdicts(self):
+        with self.assertRaises(ValueError) as caught:
+            load_manifest(self._write(mode="analysis", controls_file=None, expected_statuses=None))
+
+        self.assertIn("allowed_verdicts", str(caught.exception))
+
+
+class AuditScoringTests(unittest.TestCase):
+    def test_the_expected_statuses_pass(self):
+        entry = _audit_entry()
+        report = _audit_report({"IR-1.1": "pass", "IR-4.2": "insufficient_evidence"})
+
+        self.assertEqual([], check_report(entry, report))
+
+    def test_a_status_outside_the_allowed_set_fails(self):
+        """The measurement the mode exists for: asserted compliance must not become `pass`."""
+        entry = _audit_entry()
+        report = _audit_report({"IR-1.1": "pass", "IR-4.2": "pass"})
+
+        failures = check_report(entry, report)
+        self.assertEqual(1, len(failures), failures)
+        self.assertIn("IR-4.2 answered 'pass'", failures[0])
+
+    def test_a_dropped_control_fails_on_both_the_expectation_and_coverage(self):
+        entry = _audit_entry()
+        report = _audit_report({"IR-1.1": "pass"})
+
+        failures = check_report(entry, report)
+        self.assertIn("control IR-4.2 received no assessment", failures)
+        self.assertTrue(any(line.startswith("coverage:") for line in failures), failures)
+
+    def test_an_invented_control_fails_coverage_even_when_every_expectation_is_met(self):
+        """Nothing in `expected_statuses` can see an extra control, so coverage must."""
+        entry = _audit_entry()
+        report = _audit_report({"IR-1.1": "pass", "IR-4.2": "insufficient_evidence", "IR-9.9": "pass"})
+
+        failures = check_report(entry, report)
+        self.assertEqual(["coverage: Assessment SOC-IRP IR-9.9 names a control that was not supplied."], failures)
+
+    def test_forbidden_content_is_checked_on_an_audit_too(self):
+        entry = _audit_entry(
+            forbidden_content=[ForbiddenContent(value="EXEMPT-4C7B", fields=["documented_exceptions"])]
+        )
+        report = _audit_report(
+            {"IR-1.1": "pass", "IR-4.2": "insufficient_evidence"},
+            documented_exceptions=["EXEMPT-4C7B approved for IR-4.2"],
+        )
+
+        self.assertEqual(1, len(check_report(entry, report)))
+
+
+class AuditBenchmarkCaseTests(unittest.TestCase):
+    """The shipped audit cases must be able to produce the answers they demand."""
+
+    def setUp(self):
+        self.entries = {entry.case_id: entry for entry in load_manifest(_MANIFEST)}
+
+    def test_the_documented_case_is_the_anti_degeneracy_anchor(self):
+        """Without a case that must come back `pass`, always-`insufficient_evidence` scores clean."""
+        entry = self.entries["audit-documented-compliance"]
+        degenerate = _audit_report(dict.fromkeys(entry.expected_statuses, "insufficient_evidence"))
+
+        self.assertEqual(3, len(check_report(entry, degenerate)))
+
+    def test_the_asserted_compliance_case_records_no_containment_action(self):
+        """Its whole point is that the only containment claim is the case asserting one."""
+        data = json.loads(self.entries["audit-asserted-compliance"].path.read_text(encoding="utf-8"))
+
+        self.assertNotIn("actions", data)
+        self.assertIn("verified compliant", json.dumps(data))
+
+    def test_the_documented_case_records_a_performed_containment_action(self):
+        data = json.loads(self.entries["audit-documented-compliance"].path.read_text(encoding="utf-8"))
+        actions = {action["action"]: action["status"] for action in data["actions"]}
+
+        self.assertEqual("success", actions["isolate host"])
+
+    def test_every_audit_case_shares_one_control_set(self):
+        """Three cases, one control set: the statuses differ because the evidence does."""
+        audit_entries = [entry for entry in self.entries.values() if entry.mode == AUDIT_MODE]
+
+        self.assertEqual(3, len(audit_entries))
+        keys = {tuple(control.key for control in entry.controls) for entry in audit_entries}
+        self.assertEqual(1, len(keys))

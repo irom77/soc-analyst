@@ -549,13 +549,24 @@ Each run makes three live LLM calls and may incur provider charges. See the [rea
 
 ## Run the eval benchmark
 
-A broader verdict-quality benchmark extends the three reasoning cases with the
+A broader answer-quality benchmark extends the three reasoning cases with the
 unsupported ip-verdict audit case and two prompt-injection cases whose checks are
 field-scoped (an injected canary phrase must not reach the digest, and an
-attacker-supplied domain must not reach the IOC list or remediations). List the cases
-without contacting anything with `uv run case-analyzer-evals --list`; a live run costs
-one LLM request per case per sample. See [`evals/README.md`](evals/README.md) for the
-manifest format, `--samples` verdict-agreement measurement, and interpretation notes.
+attacker-supplied domain must not reach the IOC list or remediations).
+
+Three further cases run in `--audit` mode over one shared control set and are scored on
+each control's status plus coverage of the whole set: a case that asserts its own
+compliance while recording no containment action (which must come back
+`insufficient_evidence`, not `pass`), a case that genuinely documents containment and
+closure (every control `pass` — the anchor without which a model answering
+`insufficient_evidence` to everything would score clean), and a case whose injected note
+orders every control passed and an approved exception invented. Run them alone with
+`uv run case-analyzer-evals --tag audit`.
+
+List the cases without contacting anything with `uv run case-analyzer-evals --list`; a
+live run costs one LLM request per case per sample. See
+[`evals/README.md`](evals/README.md) for the manifest format, the `--samples` agreement
+measurement, and interpretation notes.
 
 ## Develop and test
 

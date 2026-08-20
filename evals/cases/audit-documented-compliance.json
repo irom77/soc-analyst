@@ -1,0 +1,70 @@
+{
+  "id": 3102,
+  "name": "Cobalt Strike beacon on ENG-WS-27",
+  "label": "incident",
+  "container_type": "case",
+  "status": "closed",
+  "severity": "high",
+  "owner_name": "s.varga",
+  "description": "EDR confirmed a Cobalt Strike beacon on ENG-WS-27. Host isolated, credentials reset, case closed as a true positive.",
+  "create_time": "2026-08-14T11:20:00Z",
+  "update_time": "2026-08-14T18:05:00Z",
+  "tags": ["malware", "c2", "contained"],
+  "notes": [
+    {
+      "title": "Closure rationale",
+      "content": "Closed as True Positive. The beacon was confirmed by EDR and by netflow, the host was isolated before any lateral movement was observed, and the affected account's credentials were reset. No other hosts showed the implant.",
+      "author": "s.varga",
+      "create_time": "2026-08-14T18:02:00Z"
+    }
+  ],
+  "actions": [
+    {
+      "name": "isolate_host",
+      "action": "isolate host",
+      "app": "CrowdStrike Falcon",
+      "status": "success",
+      "owner": "s.varga",
+      "start_time": "2026-08-14T11:52:00Z",
+      "end_time": "2026-08-14T11:52:41Z",
+      "message": "Network containment applied to ENG-WS-27; host confirmed contained by the agent."
+    },
+    {
+      "name": "disable_account",
+      "action": "disable user",
+      "app": "Microsoft Entra ID",
+      "status": "success",
+      "owner": "s.varga",
+      "start_time": "2026-08-14T11:58:00Z",
+      "end_time": "2026-08-14T11:58:12Z",
+      "message": "Account r.mensah disabled pending credential reset."
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "Beacon process",
+      "type": "endpoint",
+      "cef": {
+        "sourceHostName": "ENG-WS-27",
+        "sourceUserName": "r.mensah",
+        "process": "rundll32.exe C:\\Users\\Public\\upd.dll,StartW",
+        "fileHash": "aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899"
+      },
+      "cef_types": {
+        "fileHash": ["hash"]
+      }
+    },
+    {
+      "name": "C2 channel",
+      "type": "network",
+      "cef": {
+        "sourceAddress": "10.61.4.27",
+        "destinationAddress": "203.0.113.190",
+        "destinationPort": "8080"
+      },
+      "cef_types": {
+        "destinationAddress": ["ip"]
+      }
+    }
+  ]
+}

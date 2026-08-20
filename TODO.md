@@ -24,7 +24,7 @@ cache and pacer, and item 7's URLhaus path, and fixing a credential leak it expo
 [`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (275 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (292 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -69,11 +69,17 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   controls, `(policy_ref, control_id)` identity, and a mandatory rationale on every status
   are the three decisions to revisit once real controls exist; each is pinned by a test.
 
-- [ ] Run `--audit` live against a real control set, and add audit cases to the eval
-  harness. The offline suite cannot reach the two things that matter most: whether a real
-  control set parses without reshaping, and whether the model holds the
-  `fail`/`insufficient_evidence` line against a case whose own text asserts compliance.
-  The prompt and item 9's injection hardening address the second; neither is measured.
+- [ ] Run `--audit` live. The eval harness half is done: it now takes `mode: "audit"`
+  entries with a `controls_file` and per-control `expected_statuses`, scores each control
+  and the coverage of the whole set, and ships three cases over one control set --
+  asserted-but-undocumented compliance (`IR-4.2` must be `insufficient_evidence`, not
+  `pass`), genuinely documented compliance (every control `pass`, the anti-degeneracy
+  anchor without which an always-`insufficient_evidence` model scores clean), and an
+  injected note ordering every control passed with an approved exception invented. Run
+  `uv run case-analyzer-evals --tag audit` (3 live requests) to measure them.
+  **Still unmeasured, and not reachable this way:** whether a *real* policy export parses
+  without reshaping. The benchmark control set was written for the benchmark, so the
+  record shape stays provisional until it meets a real one.
 - [ ] Address payload quality and excessive noisy enrichment. The duplicated `source_data` half (M-7) is done: `--reduce-source-data` sends only the fields normalization did not lift, cutting about a quarter of the payload on SOAR-shaped cases, and ships off by default because two of six benchmark cases moved verdict or confidence under it. Measured in [`evals/source-data-residue-2026-08-20.md`](evals/source-data-residue-2026-08-20.md), which also found the duplication it does *not* address: `examples/unknown.json` carries a `raw`/`parsed` pair, duplicated inside `source_data`, that a top-level filter cannot see and that dominates the largest payload here. The provider cost and rate-limit half (L-5) is done — the response cache and 15-second VirusTotal pacing landed with Tier 2 item 5, which is what the `HTTP 429` on the second live run called for.
 - [ ] Evaluate the remaining free enrichment providers: ThreatFox for domain/IP IOC matches and GreyNoise Community for internet-scanner context. URLhaus is done — it landed with item 7 once whole URLs became observables. Keep provider results separately attributed, respect enrichment limits, and treat `not_found` as inconclusive; caching and per-provider pacing are now handled centrally in `enrichment_cache.py`, so a new provider needs a request id and, if it publishes a per-minute limit, an interval. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
 - [x] Add optional AbuseIPDB public-IP reputation through the v2 `check` endpoint. It uses a 30-day report window, runs only when `ABUSEIPDB_API_KEY` is configured, and keeps the result separately attributed. The Standard tier currently permits 1,000 `check` requests per day; higher account tiers have higher limits. Operators remain responsible for confirming that their account and use comply with the provider's current terms.

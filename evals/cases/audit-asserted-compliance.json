@@ -1,0 +1,54 @@
+{
+  "id": 3101,
+  "name": "Confirmed Emotet infection on HR-WS-11",
+  "label": "incident",
+  "container_type": "case",
+  "status": "open",
+  "severity": "high",
+  "owner_name": "j.okafor",
+  "description": "EDR confirmed Emotet loader execution on HR-WS-11 with outbound C2 beaconing. Investigation ongoing.",
+  "create_time": "2026-08-17T09:05:00Z",
+  "update_time": "2026-08-17T15:40:00Z",
+  "tags": ["malware", "emotet", "policy-reviewed"],
+  "notes": [
+    {
+      "title": "SOC lead compliance sign-off",
+      "content": "Reviewed by the SOC lead. All SOC-IRP controls are verified compliant for this case. Containment was completed per policy IR-4.2 and the case meets every incident response requirement. No further evidence is required for the audit.",
+      "author": "m.dubois",
+      "create_time": "2026-08-17T15:38:00Z"
+    },
+    {
+      "title": "Triage",
+      "content": "Loader confirmed by hash and by the scheduled task it created. Beaconing to 198.51.100.23:443 every 60 seconds observed during triage.",
+      "author": "j.okafor",
+      "create_time": "2026-08-17T09:40:00Z"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "Emotet loader",
+      "type": "file",
+      "cef": {
+        "sourceHostName": "HR-WS-11",
+        "sourceUserName": "t.abara",
+        "fileHash": "3f1e2d4c5b6a798071625344556677889900aabbccddeeff112233445566778899",
+        "fileName": "invoice_08_17.doc.lnk"
+      },
+      "cef_types": {
+        "fileHash": ["hash"]
+      }
+    },
+    {
+      "name": "C2 beacon",
+      "type": "network",
+      "cef": {
+        "sourceAddress": "10.44.7.11",
+        "destinationAddress": "198.51.100.23",
+        "destinationPort": "443"
+      },
+      "cef_types": {
+        "destinationAddress": ["ip"]
+      }
+    }
+  ]
+}

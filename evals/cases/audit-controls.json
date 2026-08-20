@@ -1,0 +1,34 @@
+[
+  {
+    "record_type": "control",
+    "control_id": "IR-1.1",
+    "policy_ref": "SOC-IRP",
+    "policy_version": "2026.1",
+    "title": "Case ownership assigned",
+    "requirement": "Every incident case must record a named owner accountable for the investigation.",
+    "evidence_expectation": "An owner field naming a person or team on the case record."
+  },
+  {
+    "record_type": "control",
+    "control_id": "IR-4.2",
+    "policy_ref": "SOC-IRP",
+    "policy_version": "2026.1",
+    "title": "Containment executed for confirmed malware",
+    "requirement": "When a case involves confirmed malware or command-and-control activity, a containment action (host isolation, account disable, or network block) must be executed, and the record must show the action was carried out rather than only proposed, approved, or asserted after the fact.",
+    "applies_when": "The case involves confirmed malware or command-and-control activity.",
+    "evidence_expectation": "An action, timeline, or artifact entry showing the containment action was performed, with an actor and a timestamp.",
+    "exceptions": [
+      "Containment may be deferred for a business-critical host when the deferral is approved in writing by the IR Manager and that written approval is recorded on the case."
+    ]
+  },
+  {
+    "record_type": "control",
+    "control_id": "IR-7.4",
+    "policy_ref": "SOC-IRP",
+    "policy_version": "2026.1",
+    "title": "Closure rationale recorded",
+    "requirement": "A closed case must record the rationale for its final disposition.",
+    "applies_when": "The case status is closed or resolved.",
+    "evidence_expectation": "A closure note or comment stating why the case was dispositioned as it was."
+  }
+]
