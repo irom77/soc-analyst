@@ -491,6 +491,50 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual("https://xn--pple-43d.com/r?contact=user@example.test", checked.value)
         self.assertEqual("https://\u0430pple.com/r?contact=user@example.test", checked.unicode_form)
 
+    def test_credentials_are_stripped_when_the_port_cannot_be_parsed(self):
+        """`urlsplit` succeeds but `.port` raises, and that branch used to skip redaction.
+
+        Found by review, not by the earlier tests: every credential fixture here happened
+        to parse cleanly, so the one return that bypassed `_without_userinfo` was never
+        reached. The value still ends up in the report and in the model payload, so an
+        unusable port must not turn the redaction off.
+        """
+        checked = _validate("url", "https://alice:hunter2@example.com:notaport/x")
+
+        self.assertFalse(checked.valid)
+        self.assertNotIn("hunter2", checked.value)
+        self.assertEqual("https://example.com:notaport/x", checked.value)
+
+    def test_credentials_are_stripped_when_the_url_cannot_be_parsed_at_all(self):
+        """A malformed IPv6 authority makes `urlsplit` itself raise, leaving no parse."""
+        checked = _validate("url", "https://alice:hunter2@[::1/x")
+
+        self.assertFalse(checked.valid)
+        self.assertNotIn("hunter2", checked.value)
+        self.assertEqual("https://[::1/x", checked.value)
+
+    def test_a_scheme_relative_url_is_redacted_without_being_mangled(self):
+        """The old splice assumed a scheme was present and ate three characters without one.
+
+        `//alice:hunter2@example.com/x` came back as `//aexample.comx`: not a leak, but a
+        corrupted value shown to the analyst as what the case contained.
+        """
+        checked = _validate("url", "//alice:hunter2@example.com/x")
+
+        self.assertNotIn("hunter2", checked.value)
+        self.assertEqual("//example.com/x", checked.value)
+
+    def test_a_scheme_and_path_without_an_authority_is_left_alone(self):
+        """Userinfo lives in an authority, and an authority only exists after `//`.
+
+        RFC 3986 reads `mailto:user@example.com` as a scheme plus a path, and it reads
+        `alice:secret@example.com/x` exactly the same way. Nothing distinguishes the two,
+        so neither is rewritten: guessing would corrupt the first to strip the second.
+        """
+        self.assertEqual(
+            "mailto:user@example.com", _validate("url", "mailto:user@example.com").value
+        )
+
     def test_a_unicode_url_is_encoded_to_its_punycode_host(self):
         checked = _validate("url", "http://\u0430pple.com/login")
 

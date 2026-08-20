@@ -303,6 +303,14 @@ That is the point of the item: a whole URL and its host are different questions 
 different providers, and a single malicious path on an otherwise ordinary host is exactly
 where the difference decides the answer.
 
+**With the qualification that `--enrichment-limit` still cuts.** Both observables are
+always emitted, but they are then sorted and truncated independently, so a tight limit can
+keep one and drop the other: at `--enrichment-limit 1` an inferred URL field leaves only
+the derived host, and a declared one leaves only the URL. What `_priority` does guarantee
+is narrower — an observable no configured provider can answer is tiered below one that can,
+so it never displaces a real lookup. "Neither substitutes for the other" describes what is
+extracted, not what survives a limit small enough to cut the pair in half.
+
 **URLhaus is the URL provider**, gated on `ABUSE_CH_AUTH_KEY` and sent as the `Auth-Key`
 header with the URL as a POST form body — the only shape the abuse.ch API accepts, and the
 reason `_http_json` grew an optional `form` argument. It answers HTTP 200 for a refused
@@ -455,8 +463,10 @@ request volume nor the machinery.
 Benchmark re-run (2026-08-20): the tripwire was fired before starting Tier 3, because four
 of the six commits since the last recorded run change what the model is asked to produce
 (citations, truncation reporting, the verdict/confidence enums, and sanitized errors). All
-six cases pass with no regression, and the provenance, citation, and truncation fields are
-confirmed populated on live output for the first time. Recorded in
+six cases pass and the provenance, citation, and truncation fields are confirmed populated
+on live output for the first time. Read that as the tripwire not firing, not as evidence of
+equivalence: six cases at three samples can catch a change that breaks a manifest or a
+post-check, and cannot resolve a shift in reasoning quality either way. Recorded in
 [`evals/post-tier-2-2026-08-20.md`](evals/post-tier-2-2026-08-20.md). The harness never
 contacts enrichment providers, so items 5, 6, and 7 were checked separately the same day
 against live DNS, RDAP, and AbuseIPDB

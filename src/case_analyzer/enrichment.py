@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, NamedTuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import SplitResult, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import idna
@@ -58,6 +58,10 @@ _KIND_LABELS = {
 _URL_SCHEMES = frozenset({"http", "https", "ftp"})
 # Ports that are already implied by the scheme, and so are dropped when normalizing.
 _DEFAULT_PORTS = {"http": 80, "https": 443, "ftp": 21}
+# The authority of a URL: an optional scheme, then `//`, then everything up to the first
+# `/`, `?`, or `#`. Anchored so that a `//` appearing later in a path cannot be mistaken
+# for the start of an authority, which is what makes redaction safe on unparsable input.
+_AUTHORITY_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.\-]*:)?//([^/?#]*)")
 
 # Type hints and field names that resolve to an observable. The boolean records
 # whether a syntax failure contradicts the case: `ip`, `domain`, and hash types
@@ -742,19 +746,19 @@ def _validate_url(candidate: str) -> _Validated:
     `CaseAnalyzerRun.endpoint_host`, which records a host and port and never the userinfo.
     The original text stays reachable through `source_paths`.
     """
+    # Before parsing, not after it: `urlsplit` raises on a malformed IPv6 authority and
+    # `.port` raises on a non-numeric port, and both of those inputs can still carry a
+    # credential. Redacting first is what makes the guarantee hold for *every* return
+    # below, including the ones taken when there is no usable parse to work from.
+    redacted = _without_userinfo(candidate)
+    unicode_form = redacted if not redacted.isascii() else ""
     try:
         parts = urlsplit(candidate)
         host = parts.hostname or ""
         port = parts.port
     except ValueError:
-        return _Validated(False, candidate)
+        return _Validated(False, redacted, unicode_form)
     scheme = parts.scheme.casefold()
-    # Before anything else, so that no branch below can hand back the credential: an invalid
-    # URL is still recorded, and `unicode_form` is still shown to the analyst and sent to the
-    # model, so stripping only the value that reaches a provider would leave the secret in
-    # the report by another route.
-    redacted = _without_userinfo(candidate, parts)
-    unicode_form = redacted if not redacted.isascii() else ""
     if scheme not in _URL_SCHEMES or not host:
         return _Validated(False, redacted, unicode_form)
     normalized_host = _validate_host(host)
@@ -770,20 +774,29 @@ def _validate_url(candidate: str) -> _Validated:
     )
 
 
-def _without_userinfo(candidate: str, parts: SplitResult) -> str:
+def _without_userinfo(candidate: str) -> str:
     """`candidate` with any `user:password@` removed and everything else exactly as written.
 
     The rest is spliced rather than rebuilt so the original scheme case, host spelling, and
     path stay byte-for-byte: this string is what the analyst is shown as the value the case
     actually contained, and a rebuild through `urlunsplit` would quietly lowercase the
-    scheme. `parts.netloc` is what decides whether userinfo is present, because it ends at
-    the first `/`, `?`, or `#` — an `@` inside a query string is not a credential.
+    scheme. It works on the text rather than on a `SplitResult` so that a URL too malformed
+    to parse is still redacted; `_AUTHORITY_RE` locates the authority the same way a parser
+    would, and an `@` in a path or query string is left alone because it is not a credential.
+
+    Userinfo only exists inside an authority, and an authority only exists after `//`. So
+    `mailto:user@example.com` and `alice:secret@example.com/x` are returned untouched: RFC
+    3986 reads both as a scheme plus a path, and there is no way to tell the second from the
+    first without guessing. Guessing wrong would corrupt a value the analyst has to read.
     """
-    if "@" not in parts.netloc:
+    match = _AUTHORITY_RE.match(candidate)
+    if match is None or "@" not in match.group(1):
         return candidate
-    head_length = len(parts.scheme) + len("://")
-    tail = candidate[head_length + len(parts.netloc) :]
-    return candidate[:head_length] + parts.netloc.rpartition("@")[2] + tail
+    return (
+        candidate[: match.start(1)]
+        + match.group(1).rpartition("@")[2]
+        + candidate[match.end(1) :]
+    )
 
 
 def _validate_email(candidate: str) -> _Validated:

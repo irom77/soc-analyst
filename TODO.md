@@ -24,9 +24,27 @@ cache and pacer, and item 7's URLhaus path, and fixing a credential leak it expo
 [`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (208 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (214 offline tests; no credentials or network needed).
 
 ## Existing
+
+- [x] Fix the two defects an external review of `3b7a8dc..HEAD` confirmed, both of which
+  the offline suite had no test for. **A URL that cannot be parsed kept its credential:**
+  `_validate_url` redacted only after `urlsplit` and `.port` succeeded, so
+  `https://alice:hunter2@example.com:notaport/x` and a malformed IPv6 authority reached the
+  report and the model payload intact — the same leak class as 2026-08-20, by a different
+  branch. Redaction now runs before parsing and works on the text via `_AUTHORITY_RE`, so
+  no return can bypass it. The old splice also corrupted scheme-relative URLs
+  (`//alice:hunter2@example.com/x` became `//aexample.comx`); that is fixed too, and a
+  scheme-plus-path with no `//` is now deliberately left alone, because RFC 3986 reads
+  `mailto:user@example.com` the same way and nothing distinguishes the two.
+  **`--reduce-source-data` could delete evidence:** the residue picked its key set from
+  `case.source`, which holds whatever the export calls itself, so a generic case with
+  `"source": "splunk"` was reduced against the SOAR set and lost `product` and `data`.
+  `normalize_case` now records the adapter it actually ran in a private
+  `CanonicalCase._source_format`, which stays out of `model_dump` and so out of the
+  payload. Six regression tests added, each confirmed to fail against the previous code.
+
 
 - [ ] Confirm VirusTotal's base64 URL identifier with a live call, against a key with
   quota available. The 2026-08-20 run reached VirusTotal but its quota was exhausted, so

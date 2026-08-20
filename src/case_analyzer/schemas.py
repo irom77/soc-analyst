@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_serializer
 
 
 def _isoformat_z(value: datetime) -> str:
@@ -81,6 +81,11 @@ class CanonicalCase(BaseModel):
     source: str = "generic"
     source_data: dict[str, Any] = Field(default_factory=dict)
     case_analyzer_enrichment: CaseAnalyzerEnrichment | None = None
+    # Which adapter built this case, recorded by `normalize_case`. Private so that it stays
+    # out of `model_dump` and therefore out of the payload sent to the model -- it is an
+    # internal fact about parsing, not evidence. `source` cannot answer this: it holds
+    # whatever the export called its own product, so a generic case can say "splunk".
+    _source_format: str = PrivateAttr(default="")
 
 
 class CaseSummary(BaseModel):

@@ -111,6 +111,38 @@ if __name__ == "__main__":
 class SourceDataResidueTests(unittest.TestCase):
     """Improvement-plan item 10: send only what normalization did not already lift."""
 
+    def test_a_generic_case_naming_its_product_is_not_reduced_as_soar(self):
+        """The format came from `case.source`, which holds whatever the export calls itself.
+
+        A generic export with `"source": "splunk"` is normalized by the generic adapter,
+        but the residue used to apply the SOAR key set to it and delete `product` and
+        `data` -- two fields generic never lifted. That silently removes evidence from the
+        payload while the stored case still looks complete.
+        """
+        case = normalize_case(
+            {
+                "id": "1",
+                "name": "C",
+                "source": "splunk",
+                "product": "EDR-only evidence",
+                "data": "more evidence",
+            }
+        )
+        residue = source_data_residue(case)
+
+        self.assertEqual("splunk", case.source)
+        self.assertEqual("EDR-only evidence", residue.get("product"))
+        self.assertEqual("more evidence", residue.get("data"))
+
+    def test_an_explicit_format_choice_decides_the_residue(self):
+        """`--format soar` must reduce as SOAR even when detection would say otherwise."""
+        data = {"id": "1", "name": "C", "data": "lifted into description", "extra": "kept"}
+        case = normalize_case(data, source_format="soar")
+        residue = source_data_residue(case)
+
+        self.assertNotIn("data", residue)
+        self.assertEqual("kept", residue.get("extra"))
+
     def test_residue_drops_lifted_keys_and_keeps_the_rest(self):
         case = normalize_case(
             {

@@ -32,9 +32,16 @@ def normalize_case(data: Mapping[str, Any], source_format: str = "auto") -> Cano
     selected = detect_format(data) if source_format == "auto" else source_format
     adapters = {"generic": _generic, "soar": _soar}
     try:
-        return adapters[selected](data)
+        adapter = adapters[selected]
     except KeyError:
         raise ValueError(f"Unsupported input format: {selected}") from None
+    case = adapter(data)
+    # Recorded here because this is the only place that knows which adapter ran. Deriving
+    # it later from `case.source` would be wrong: a generic export that names its product
+    # (`"source": "splunk"`) would be read back as SOAR, and the residue would then drop
+    # keys the generic adapter never lifted.
+    case._source_format = selected
+    return case
 
 
 # Top-level source keys each adapter may consume, as the `_first(...)` alias groups below
@@ -71,7 +78,15 @@ def source_data_residue(case: "CanonicalCase") -> dict[str, Any]:
 
 
 def _format_of(case: "CanonicalCase") -> str:
-    return "generic" if case.source == "generic" else "soar"
+    """The adapter that built `case`, falling back to detection for a hand-built case.
+
+    Never `case.source`: that field carries whatever the export called itself, so a case
+    the generic adapter normalized can hold `"splunk"` there. Reducing such a case against
+    the SOAR key set would delete `product` and `data`, which generic never lifted.
+    """
+    if case._source_format in CONSUMED_SOURCE_KEYS:
+        return case._source_format
+    return detect_format(case.source_data)
 
 
 def _generic(data: Mapping[str, Any]) -> CanonicalCase:
