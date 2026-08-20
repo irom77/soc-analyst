@@ -142,12 +142,46 @@ credential still sends it to the model.** Anyone handling exports with embedded 
 should know that. It is adjacent to plan item 10, which proposes sending only the source
 fields the normalizer did not already lift.
 
-## What this still does not verify
+## The VirusTotal run — pacer confirmed, URL identifier still not
 
-`VIRUSTOTAL_API_KEY` is commented out, so two things remain asserted only against
-fixtures: **item 5's 15-second pacer**, which exists for no other provider, and **item 7's
-base64 URL identifier**, the unpadded URL-safe encoding VirusTotal requires instead of a
-percent-encoded path segment. Uncommenting that key would close both in one run.
+A second run with `VIRUSTOTAL_API_KEY` enabled is recorded separately in
+[`enrichment-2026-08-20-virustotal.json`](enrichment-2026-08-20-virustotal.json), because
+it is a *degraded* run and should not stand in for the clean one above.
+
+**Item 5's pacer is confirmed, by arithmetic that could not have come out this way by
+accident.** The run made 7 VirusTotal attempts, so 6 inter-request gaps at the configured
+15 seconds, on top of a 3.65s baseline measured without VirusTotal:
+
+```
+predicted 6 x 15.0 + 3.65 = 93.7s
+observed                    93.90s
+```
+
+That is the pacer spacing real requests, not a fake clock in a unit test.
+
+**VirusTotal's quota was exhausted**, so six of the seven attempts returned HTTP 429
+`QuotaExceededError`. This is not the pacer being too aggressive: a single request issued
+by hand after 20 seconds of idle returned the same 429, so no spacing would have helped.
+One domain lookup did get through and returned real `last_analysis_stats`, which confirms
+the domain endpoint.
+
+**Item 7's base64 URL identifier remains unverified.** Both URL attempts hit 429 before
+VirusTotal ever evaluated the identifier, and a 429 says nothing about whether the
+unpadded URL-safe encoding is the right one. This is the last piece still resting on a
+fixture written alongside the code it checks. It needs a key with quota available.
+
+### What the failure did demonstrate
+
+The degraded run exercised two safety mechanisms under genuinely adverse conditions
+rather than simulated ones:
+
+- After 3 consecutive VirusTotal failures the remaining VirusTotal lookups were skipped,
+  with the reason recorded on the observation: `Lookups against virustotal stopped after
+  3 consecutive failures.` The run reported `stopped_early=yes`.
+- The failures were contained to VirusTotal. DNS, RDAP, AbuseIPDB, and URLhaus all
+  returned their answers in the same run, which is what the two-pass executor is for.
+- Errors are not cached (only `found` and `not_found` are), so a bad quota minute is not
+  frozen into later runs.
 
 The URLhaus listing recorded here is a point-in-time observation from 2026-08-20. Entries
 are removed as URLs go offline, so a later run of the same case may return `not_found`

@@ -441,7 +441,9 @@ confirmed against the real API: all four outcomes return HTTP 200 and only `quer
 separates them, so the implementation needed no change, and one field produced a URLhaus
 `malware_download` hit alongside an AbuseIPDB score of 3 for its host — the case for
 treating a URL and its host as separate observables, observed rather than argued. Item 5's
-pacer and item 7's VirusTotal URL identifier still need a key that is not configured.
+pacer was then confirmed by wall clock — 7 VirusTotal attempts predicted 93.7s and the run
+took 93.90s — but VirusTotal's quota was exhausted, so item 7's base64 URL identifier is
+the one enrichment path still resting on a fixture and needs a key with quota available.
 
 What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
 real control set before any code. Tier 4 items 10 and 11 remain propose-and-discuss; the
