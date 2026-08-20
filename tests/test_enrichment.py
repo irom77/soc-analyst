@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import threading
@@ -436,6 +437,59 @@ class ValidationTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertFalse(_validate("domain", value).valid)
 
+    def test_url_normalization_keeps_the_path_and_folds_only_the_host(self):
+        self.assertEqual(
+            (True, "https://evil.test/Beacon?Id=1#Frag", ""),
+            _validate("url", " HTTPS://Evil.TEST:443/Beacon?Id=1#Frag "),
+        )
+        # A path that differs by case is a different resource, and the query and fragment
+        # can carry the payload, so none of the three may be rewritten.
+        self.assertNotEqual(
+            _validate("url", "https://evil.test/A").value,
+            _validate("url", "https://evil.test/a").value,
+        )
+        self.assertEqual("http://evil.test/", _validate("url", "http://evil.test").value)
+        self.assertEqual("http://evil.test:8080/x", _validate("url", "http://evil.test:8080/x").value)
+
+    def test_url_credentials_are_never_carried_into_a_lookup(self):
+        """Userinfo must not reach a third-party API or the on-disk cache."""
+        checked = _validate("url", "https://admin:hunter2@evil.test/payload.bin")
+
+        self.assertTrue(checked.valid)
+        self.assertEqual("https://evil.test/payload.bin", checked.value)
+        self.assertNotIn("hunter2", checked.value)
+
+    def test_a_unicode_url_is_encoded_to_its_punycode_host(self):
+        checked = _validate("url", "http://\u0430pple.com/login")
+
+        self.assertEqual("http://xn--pple-43d.com/login", checked.value)
+        self.assertEqual("http://\u0430pple.com/login", checked.unicode_form)
+
+    def test_url_with_a_literal_address_keeps_the_address(self):
+        self.assertEqual("http://8.8.8.8/x", _validate("url", "http://8.8.8.8/x").value)
+        self.assertEqual("http://[2001:db8::1]/x", _validate("url", "http://[2001:0db8:0000::1]/x").value)
+
+    def test_urls_without_a_usable_scheme_or_host_are_invalid(self):
+        for value in ("mailto:a@evil.test", "evil.test/path", "https:///path", "javascript:alert(1)",
+                      "https://not a host/x", "C:\\Windows\\notepad.exe"):
+            with self.subTest(value=value):
+                checked = _validate("url", value)
+                self.assertFalse(checked.valid)
+                self.assertEqual(value, checked.value)
+
+    def test_email_folds_the_domain_and_leaves_the_local_part_alone(self):
+        self.assertEqual((True, "Attacker@evil.test", ""), _validate("email", " Attacker@Evil.TEST "))
+        checked = _validate("email", "user@\u043f\u0440\u0438\u043c\u0435\u0440.test")
+        self.assertEqual("user@xn--e1afmkfd.test", checked.value)
+        self.assertEqual("user@\u043f\u0440\u0438\u043c\u0435\u0440.test", checked.unicode_form)
+
+    def test_addresses_without_a_local_part_or_a_real_domain_are_invalid(self):
+        for value in ("@evil.test", "attacker@", "attacker", "attacker@WORKSTATION01", "a b@evil.test"):
+            with self.subTest(value=value):
+                checked = _validate("email", value)
+                self.assertFalse(checked.valid)
+                self.assertEqual(value, checked.value)
+
 
 class HttpJsonTests(unittest.TestCase):
     def test_non_object_body_is_reported_as_absent(self):
@@ -542,19 +596,26 @@ class ExtractionCoverageTests(unittest.TestCase):
 
         result = enrich_case(case, domain_lookup=_found_domain)
 
-        self.assertEqual(1, len(result.observations))
-        observation = result.observations[0]
-        self.assertEqual(("domain", "stage2.evil.test"), (observation.observable_type, observation.value))
+        # Both, not one: DNS answers for the host and URLhaus answers for the whole URL,
+        # so the derived host does not stand in for the URL the case actually recorded.
+        self.assertEqual(2, len(result.observations))
+        by_kind = {item.observable_type: item for item in result.observations}
+        self.assertEqual("stage2.evil.test", by_kind["domain"].value)
         self.assertEqual(
-            ["source_data.artifacts[0].cef.requestURL#host"], observation.source_paths
+            ["source_data.artifacts[0].cef.requestURL#host"], by_kind["domain"].source_paths
         )
+        self.assertEqual("https://stage2.evil.test:8443/beacon?id=1", by_kind["url"].value)
+        self.assertEqual(["source_data.artifacts[0].cef.requestURL"], by_kind["url"].source_paths)
 
     def test_url_with_a_literal_address_contributes_an_ip(self):
         case = normalize_case({"id": "case-21", "title": "URL", "requestUrl": "http://8.8.8.8/x"})
 
         result = enrich_case(case, ip_lookup=_found_ip)
 
-        self.assertEqual(("ip", "8.8.8.8"), (result.observations[0].observable_type, result.observations[0].value))
+        by_kind = {item.observable_type: item for item in result.observations}
+        self.assertEqual("8.8.8.8", by_kind["ip"].value)
+        self.assertTrue(by_kind["ip"].source_paths[0].endswith("#host"))
+        self.assertEqual("http://8.8.8.8/x", by_kind["url"].value)
 
     def test_email_contributes_its_domain(self):
         case = normalize_case(
@@ -563,9 +624,11 @@ class ExtractionCoverageTests(unittest.TestCase):
 
         result = enrich_case(case, domain_lookup=_found_domain)
 
-        observation = result.observations[0]
-        self.assertEqual(("domain", "evil.test"), (observation.observable_type, observation.value))
-        self.assertTrue(observation.source_paths[0].endswith("#domain"))
+        by_kind = {item.observable_type: item for item in result.observations}
+        self.assertEqual("evil.test", by_kind["domain"].value)
+        self.assertTrue(by_kind["domain"].source_paths[0].endswith("#domain"))
+        # The local part keeps its case; only the domain half is folded.
+        self.assertEqual("Attacker@evil.test", by_kind["email"].value)
 
     def test_file_hash_is_validated_and_enriched_only_through_virustotal(self):
         digest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -856,6 +919,200 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(
             [("ip", "1.1.1.1", "source_data.child_containers[0].artifacts[0].cef.destinationAddress")],
             [(item.kind, item.value, item.path) for item in found],
+        )
+
+
+class UrlhausLookupTests(unittest.TestCase):
+    def test_the_url_is_posted_as_a_form_body_with_the_auth_key_in_a_header(self):
+        payload = {
+            "query_status": "ok",
+            "url_status": "online",
+            "threat": "malware_download",
+            "tags": ["exe", "Loader"],
+            "date_added": "2026-08-01 09:00:00 UTC",
+            "reporter": "someone",
+            "urlhaus_reference": "https://urlhaus.abuse.ch/url/1234/",
+            "blacklists": {"spamhaus_dbl": "not listed", "surbl": "not listed"},
+            "payloads": [
+                {"signature": "Loader", "response_md5": "d4"},
+                {"signature": "Loader", "response_md5": "e5"},
+                {"signature": None},
+            ],
+        }
+        with patch("case_analyzer.enrichment._http_json", return_value=(200, payload, "unused")) as request:
+            status, provider, details = enrichment_module._urlhaus_lookup(
+                "https://evil.test/beacon", 2.5, "secret"
+            )
+
+        url, headers, timeout = request.call_args.args
+        self.assertEqual("https://urlhaus-api.abuse.ch/v1/url/", url)
+        self.assertEqual("secret", headers["Auth-Key"])
+        # The key belongs in a header and the URL in a body; neither may leak into the
+        # request line, which is the part that ends up in proxy and server logs.
+        self.assertNotIn("secret", url)
+        self.assertEqual({"url": "https://evil.test/beacon"}, request.call_args.kwargs["form"])
+        self.assertEqual(2.5, timeout)
+        self.assertEqual(("found", "urlhaus"), (status, provider))
+        self.assertEqual("malware_download", details["threat"])
+        # Every payload is counted, including the one URLhaus could not name; the
+        # signature list is deduplicated, so the two numbers are deliberately different.
+        self.assertEqual(3, details["payload_count"])
+        self.assertEqual(["Loader"], details["payload_signatures"])
+        self.assertNotIn("response_md5", json.dumps(details))
+
+    def test_a_form_body_makes_the_request_a_post(self):
+        with patch("case_analyzer.enrichment.urlopen", return_value=_FakeResponse({"ok": True})) as opener:
+            _http_json("https://provider.test", {}, 1.0, form={"url": "https://evil.test/a b"})
+
+        request = opener.call_args.args[0]
+        self.assertEqual("POST", request.get_method())
+        self.assertEqual(b"url=https%3A%2F%2Fevil.test%2Fa+b", request.data)
+        self.assertEqual("application/x-www-form-urlencoded", request.get_header("Content-type"))
+
+    def test_a_miss_is_not_found_rather_than_an_error(self):
+        with patch("case_analyzer.enrichment._http_json", return_value=(200, {"query_status": "no_results"}, "x")):
+            status, _, details = enrichment_module._urlhaus_lookup("https://ok.test/", 1.0, "key")
+
+        self.assertEqual("not_found", status)
+        self.assertEqual("no_results", details["query_status"])
+
+    def test_a_rejected_query_answered_with_http_200_is_an_error(self):
+        """URLhaus answers 200 for a refused request too, so the status alone cannot decide."""
+        for query_status in ("invalid_url", "http_post_expected", "unauthorized"):
+            with self.subTest(query_status=query_status):
+                with patch(
+                    "case_analyzer.enrichment._http_json",
+                    return_value=(200, {"query_status": query_status}, "x"),
+                ):
+                    status, _, details = enrichment_module._urlhaus_lookup("https://ok.test/", 1.0, "key")
+
+                self.assertEqual("error", status)
+                self.assertEqual(query_status, details["error"])
+
+
+class UrlAndEmailEnrichmentTests(unittest.TestCase):
+    def _case(self, value, field="requestURL", hint="url", case_id="case-url"):
+        return normalize_case(
+            {
+                "id": case_id,
+                "title": "URL",
+                "artifacts": [{"cef": {field: value}, "cef_types": {field: [hint]}}],
+            }
+        )
+
+    def test_the_url_itself_is_looked_up_when_an_abuse_ch_key_is_configured(self):
+        calls = []
+
+        result = enrich_case(
+            self._case("https://Evil.test/beacon?id=1"),
+            domain_lookup=_found_domain,
+            urlhaus_lookup=lambda value, timeout, key: (
+                calls.append((value, key)) or ("found", "urlhaus", {"threat": "malware_download"})
+            ),
+            abuse_ch_api_key="abuse-key",
+        )
+
+        self.assertEqual([("https://evil.test/beacon?id=1", "abuse-key")], calls)
+        url = next(item for item in result.observations if item.observable_type == "url")
+        self.assertEqual(("urlhaus", "found"), (url.provider, url.lookup_status))
+        # A URLhaus hit is reputation, so it is recorded beside the case rather than
+        # treated as resolving it.
+        self.assertEqual("inconclusive", url.comparison_with_case.status)
+
+    def test_without_a_key_the_url_is_recorded_as_skipped_with_the_variable_named(self):
+        result = enrich_case(self._case("https://evil.test/beacon"), domain_lookup=_found_domain)
+
+        url = next(item for item in result.observations if item.observable_type == "url")
+        self.assertEqual(("local-validation", "skipped"), (url.provider, url.lookup_status))
+        self.assertIn("ABUSE_CH_AUTH_KEY", url.details["reason"])
+        self.assertEqual("inconclusive", url.comparison_with_case.status)
+
+    def test_virustotal_looks_up_a_url_by_its_base64_identifier(self):
+        identifier = base64.urlsafe_b64encode(b"https://evil.test/beacon").decode("ascii").rstrip("=")
+        with patch(
+            "case_analyzer.enrichment._http_json",
+            return_value=(200, {"data": {"attributes": {"reputation": -7, "title": "Login"}}}, "x"),
+        ) as request:
+            status, _, details = enrichment_module._virustotal_lookup(
+                "url", "https://evil.test/beacon", 1.0, "key"
+            )
+
+        self.assertEqual(f"https://www.virustotal.com/api/v3/urls/{identifier}", request.call_args.args[0])
+        self.assertNotIn("=", request.call_args.args[0].rsplit("/", 1)[1])
+        self.assertEqual(("found", -7, "Login"), (status, details["reputation"], details["title"]))
+
+    def test_a_url_reaches_both_urlhaus_and_virustotal_and_its_host_reaches_dns(self):
+        result = enrich_case(
+            self._case("https://evil.test/beacon"),
+            domain_lookup=_found_domain,
+            urlhaus_lookup=lambda value, timeout, key: ("found", "urlhaus", {"threat": "malware_download"}),
+            abuse_ch_api_key="abuse-key",
+            virustotal_lookup=lambda kind, value, timeout, key: ("found", "virustotal", {"reputation": -3}),
+            virustotal_api_key="vt-key",
+        )
+
+        self.assertEqual(
+            {
+                ("url", "urlhaus"),
+                ("url", "virustotal"),
+                ("domain", "test-dns"),
+                ("domain", "virustotal"),
+            },
+            {(item.observable_type, item.provider) for item in result.observations},
+        )
+
+    def test_an_email_address_is_recorded_but_never_sent_to_a_provider(self):
+        def refuse(*args, **kwargs):
+            self.fail("no provider answers for an email address")
+
+        result = enrich_case(
+            self._case("Attacker@Evil.test", field="sourceUserEmail", hint="email", case_id="case-email"),
+            domain_lookup=_found_domain,
+            urlhaus_lookup=refuse,
+            abuse_ch_api_key="abuse-key",
+            virustotal_lookup=lambda kind, value, timeout, key: (
+                self.fail("VirusTotal has no endpoint for an address")
+                if kind == "email"
+                else ("found", "virustotal", {"reputation": 0})
+            ),
+            virustotal_api_key="vt-key",
+        )
+
+        email = next(item for item in result.observations if item.observable_type == "email")
+        self.assertEqual(("local-validation", "skipped", True), (email.provider, email.lookup_status, email.valid))
+        self.assertIn("#domain", email.details["reason"])
+
+    def test_an_uncovered_url_never_displaces_a_lookup_the_limit_could_have_spent(self):
+        """The limit counts observables, so a URL with no provider must sort behind one."""
+        case = normalize_case(
+            {
+                "id": "case-limit",
+                "title": "Limit",
+                "artifacts": [
+                    {
+                        "cef": {"requestURL": "https://evil.test/beacon", "destinationAddress": "8.8.8.8"},
+                        "cef_types": {"requestURL": ["url"], "destinationAddress": ["ip"]},
+                    }
+                ],
+            }
+        )
+
+        result = enrich_case(case, limit=2, domain_lookup=_found_domain, ip_lookup=_found_ip)
+
+        self.assertTrue(result.truncated)
+        self.assertEqual(
+            [("ip", "8.8.8.8"), ("domain", "evil.test")],
+            [(item.observable_type, item.value) for item in result.observations],
+        )
+
+    def test_a_url_answer_is_cached_and_paced_under_its_own_fingerprint(self):
+        """The URL and its host are different requests, so one may not answer for the other."""
+        self.assertNotEqual(
+            enrichment_module._REQUEST_IDS["urlhaus"], enrichment_module._REQUEST_IDS["cloudflare-dns"]
+        )
+        self.assertEqual(
+            {"cloudflare-dns", "rdap", "virustotal", "abuseipdb", "urlhaus"},
+            set(enrichment_module._REQUEST_IDS),
         )
 
 

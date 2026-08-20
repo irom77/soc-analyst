@@ -1,3 +1,4 @@
+import base64
 import ipaddress
 import json
 import re
@@ -8,7 +9,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, NamedTuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import idna
@@ -40,8 +41,23 @@ _REQUEST_IDS = {
     "rdap": "iana-rdap-bootstrap|v1",
     "virustotal": "https://www.virustotal.com/api/v3|v1",
     "abuseipdb": "https://api.abuseipdb.com/api/v2/check?maxAgeInDays=30|v1",
+    "urlhaus": "https://urlhaus-api.abuse.ch/v1/url/|v1",
 }
-_KIND_LABELS = {"ip": "IP address", "domain": "domain", "file_hash": "file hash"}
+_KIND_LABELS = {
+    "ip": "IP address",
+    "domain": "domain",
+    "file_hash": "file hash",
+    "url": "URL",
+    "email": "email address",
+}
+
+# Schemes a URL observable may use. Deliberately short: these are the schemes URLhaus and
+# VirusTotal index, and the ones a malware-distribution or phishing URL in a case export
+# actually carries. Anything else — `mailto:`, `data:`, a Windows path that parsed as a
+# scheme — is marked invalid rather than sent to a provider that cannot answer for it.
+_URL_SCHEMES = frozenset({"http", "https", "ftp"})
+# Ports that are already implied by the scheme, and so are dropped when normalizing.
+_DEFAULT_PORTS = {"http": 80, "https": 443, "ftp": 21}
 
 # Type hints and field names that resolve to an observable. The boolean records
 # whether a syntax failure contradicts the case: `ip`, `domain`, and hash types
@@ -227,19 +243,21 @@ def _emit(
 ) -> list[_Observable]:
     """Turn one matched field into the observables it contributes."""
     kind, strict = resolved
+    emitted = [_Observable(kind, raw, path, context, declared and strict)]
     if kind == "url":
+        # The URL itself is looked up now, but the host part is still emitted alongside
+        # it: DNS, RDAP, and AbuseIPDB answer for a host and not for a URL, so dropping
+        # it would trade one observation for another rather than add one.
         host = _url_host(raw)
-        if not host:
-            return []
-        host_kind = "ip" if _is_ip(host) else "domain"
-        # The case declared a URL, not a host, so the derived value is inferred.
-        return [_Observable(host_kind, host, f"{path}#host", context, False)]
-    if kind == "email":
+        if host:
+            host_kind = "ip" if _is_ip(host) else "domain"
+            # The case declared a URL, not a host, so the derived value is inferred.
+            emitted.append(_Observable(host_kind, host, f"{path}#host", context, False))
+    elif kind == "email":
         domain = raw.rpartition("@")[2].strip()
-        if not domain:
-            return []
-        return [_Observable("domain", domain, f"{path}#domain", context, False)]
-    return [_Observable(kind, raw, path, context, declared and strict)]
+        if domain:
+            emitted.append(_Observable("domain", domain, f"{path}#domain", context, False))
+    return emitted
 
 
 def _is_ip(value: str) -> bool:
@@ -337,9 +355,22 @@ def _malformed_body(status: int) -> dict[str, Any]:
     return {"http_status": status, "error": "The provider returned a JSON body that is not an object."}
 
 
-def _http_json(url: str, headers: dict[str, str], timeout: float) -> tuple[int, dict[str, Any] | None, str]:
-    """Return the status, the decoded JSON object (`None` if the body is not one), and the answering URL."""
-    request = Request(url, headers=headers)
+def _http_json(
+    url: str,
+    headers: dict[str, str],
+    timeout: float,
+    form: Mapping[str, str] | None = None,
+) -> tuple[int, dict[str, Any] | None, str]:
+    """Return the status, the decoded JSON object (`None` if the body is not one), and the answering URL.
+
+    Passing `form` sends it as a URL-encoded POST body, which is the only shape the
+    abuse.ch API accepts; without it the request stays a GET, as every other provider here
+    expects.
+    """
+    data = urlencode(dict(form)).encode("utf-8") if form is not None else None
+    if data is not None:
+        headers = {**headers, "Content-Type": "application/x-www-form-urlencoded"}
+    request = Request(url, headers=headers, data=data)
     try:
         with urlopen(request, timeout=timeout) as response:
             return response.status, _as_mapping(json.load(response)), response.url or url
@@ -474,9 +505,16 @@ def _virustotal_lookup(
     timeout: float,
     api_key: str,
 ) -> tuple[str, str, dict[str, Any]]:
-    resource = {"domain": "domains", "ip": "ip_addresses", "file_hash": "files"}[kind]
+    resource = {"domain": "domains", "ip": "ip_addresses", "file_hash": "files", "url": "urls"}[kind]
+    # VirusTotal identifies a URL by the unpadded URL-safe base64 of the URL itself, not by
+    # a percent-encoded path segment; every other observable is the value as written.
+    identifier = (
+        base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+        if kind == "url"
+        else quote(value, safe="")
+    )
     status, body, _ = _http_json(
-        f"https://www.virustotal.com/api/v3/{resource}/{quote(value, safe='')}",
+        f"https://www.virustotal.com/api/v3/{resource}/{identifier}",
         {
             "Accept": "application/json",
             "User-Agent": _USER_AGENT,
@@ -506,7 +544,70 @@ def _virustotal_lookup(
     if kind == "file_hash":
         details["meaningful_name"] = attributes.get("meaningful_name")
         details["type_description"] = attributes.get("type_description")
+    if kind == "url":
+        # Where the URL actually led and what the page called itself: the two fields that
+        # distinguish a redirector from its destination when reading a verdict.
+        details["last_final_url"] = attributes.get("last_final_url")
+        details["title"] = attributes.get("title")
     return "found", "virustotal", details
+
+
+def _urlhaus_lookup(
+    value: str,
+    timeout: float,
+    api_key: str,
+) -> tuple[str, str, dict[str, Any]]:
+    """Ask URLhaus whether this exact URL has been reported as distributing malware.
+
+    URLhaus indexes whole URLs, which is what makes it the provider for this observable:
+    a case's `requestURL` can be a single malicious path on an otherwise ordinary host,
+    and a DNS or RDAP answer about that host says nothing about it either way.
+
+    The API answers 200 for both a hit and a miss and distinguishes them in
+    `query_status`, so the HTTP status alone cannot be used to decide the outcome.
+    """
+    status, body, _ = _http_json(
+        "https://urlhaus-api.abuse.ch/v1/url/",
+        {"Accept": "application/json", "User-Agent": _USER_AGENT, "Auth-Key": api_key},
+        timeout,
+        form={"url": value},
+    )
+    if body is None:
+        return "error", "urlhaus", _malformed_body(status)
+    if status != 200:
+        return "error", "urlhaus", {
+            "http_status": status,
+            "error": body.get("query_status") or body.get("error") or "request failed",
+        }
+    query_status = str(body.get("query_status", ""))
+    if query_status == "no_results":
+        return "not_found", "urlhaus", {"query_status": query_status}
+    if query_status != "ok":
+        # `invalid_url`, `http_post_expected`, a rejected Auth-Key: the request was
+        # answered but not honored, which is a failure of this lookup rather than a
+        # statement about the URL.
+        return "error", "urlhaus", {"http_status": status, "error": query_status or "request failed"}
+    payloads = body.get("payloads")
+    signatures = [
+        item.get("signature")
+        for item in (payloads if isinstance(payloads, list) else [])[:10]
+        if isinstance(item, Mapping) and item.get("signature")
+    ]
+    blacklists = body.get("blacklists")
+    return "found", "urlhaus", {
+        "query_status": query_status,
+        # `url_status` is URLhaus's own liveness flag ("online"/"offline"/"unknown") and
+        # is not a verdict: a URL taken offline was still reported as malicious.
+        "url_status": body.get("url_status"),
+        "threat": body.get("threat"),
+        "tags": body.get("tags") if isinstance(body.get("tags"), list) else [],
+        "date_added": body.get("date_added"),
+        "reporter": body.get("reporter"),
+        "urlhaus_reference": body.get("urlhaus_reference"),
+        "blacklists": dict(blacklists) if isinstance(blacklists, Mapping) else {},
+        "payload_count": len(payloads) if isinstance(payloads, list) else 0,
+        "payload_signatures": list(dict.fromkeys(signatures)),
+    }
 
 
 def _abuseipdb_lookup(
@@ -582,6 +683,10 @@ def _validate(kind: str, value: str) -> _Validated:
     would have reached. The two standards agree on every other realistic host value in
     the test suite; where they differ, UTS #46 is the stricter of the two.
     """
+    if kind == "url":
+        return _validate_url(value.strip())
+    if kind == "email":
+        return _validate_email(value.strip())
     candidate = value.strip().rstrip(".")
     if kind == "ip":
         try:
@@ -592,12 +697,90 @@ def _validate(kind: str, value: str) -> _Validated:
         normalized = candidate.casefold()
         valid = len(normalized) in _HASH_ALGORITHMS and bool(_HEX_RE.fullmatch(normalized))
         return _Validated(valid, normalized)
+    return _validate_domain(candidate)
+
+
+def _validate_domain(candidate: str) -> _Validated:
+    """The domain half of `_validate`, split out because URLs and email addresses reuse it."""
     unicode_form = candidate if not candidate.isascii() else ""
     try:
         ascii_domain = idna.encode(candidate, uts46=True, transitional=False).decode("ascii").casefold()
     except (idna.IDNAError, UnicodeError):
         return _Validated(False, candidate, unicode_form)
     return _Validated(bool(_DOMAIN_RE.fullmatch(ascii_domain)), ascii_domain, unicode_form)
+
+
+def _validate_host(candidate: str) -> str:
+    """The normalized host for a URL, or an empty string when it is not one.
+
+    An address literal is normalized through `ipaddress` and re-bracketed for IPv6, which
+    is how it has to appear in a URL; anything else goes through the same IDNA path as a
+    bare domain observable, so `http://пример.test/` is looked up under its punycode name.
+    """
+    if candidate.startswith("[") and candidate.endswith("]"):
+        candidate = candidate[1:-1]
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        checked = _validate_domain(candidate.rstrip("."))
+        return checked.value if checked.valid else ""
+    return f"[{address}]" if address.version == 6 else str(address)
+
+
+def _validate_url(candidate: str) -> _Validated:
+    """Check and minimally normalize a URL, without contacting anything.
+
+    Normalization is kept to the parts that cannot change which resource is meant: the
+    scheme and host are lowercased, the host is punycoded, a port the scheme already
+    implies is dropped, and an empty path becomes `/`. The path, query, and fragment are
+    preserved exactly as the case wrote them, because a distribution URL's identity lives
+    in its path and a "helpful" rewrite would query a provider about a different URL.
+
+    **Userinfo is removed.** A URL in an export can carry `user:password@`, and this value
+    is sent to a third-party API and written to the on-disk cache in the clear; a
+    credential must not travel to either. This follows the same rule as
+    `CaseAnalyzerRun.endpoint_host`, which records a host and port and never the userinfo.
+    The original text stays reachable through `source_paths`.
+    """
+    try:
+        parts = urlsplit(candidate)
+        host = parts.hostname or ""
+        port = parts.port
+    except ValueError:
+        return _Validated(False, candidate)
+    scheme = parts.scheme.casefold()
+    unicode_form = candidate if not candidate.isascii() else ""
+    if scheme not in _URL_SCHEMES or not host:
+        return _Validated(False, candidate, unicode_form)
+    normalized_host = _validate_host(host)
+    if not normalized_host:
+        return _Validated(False, candidate, unicode_form)
+    netloc = normalized_host
+    if port is not None and port != _DEFAULT_PORTS[scheme]:
+        netloc = f"{netloc}:{port}"
+    return _Validated(
+        True,
+        urlunsplit((scheme, netloc, parts.path or "/", parts.query, parts.fragment)),
+        unicode_form,
+    )
+
+
+def _validate_email(candidate: str) -> _Validated:
+    """Check and minimally normalize an email address, without contacting anything.
+
+    The domain is normalized exactly as a domain observable is, so `user@ПРИМЕР.test` and
+    `user@xn--e1afmkfd.test` group together. The local part is left alone: RFC 5321 makes
+    it case-sensitive and the address's owner decides what it means, so folding it would
+    merge two addresses that the mail system may keep apart.
+    """
+    local, separator, domain = candidate.rpartition("@")
+    unicode_form = candidate if not candidate.isascii() else ""
+    if not separator or not local or any(character.isspace() for character in candidate):
+        return _Validated(False, candidate, unicode_form)
+    checked = _validate_domain(domain.rstrip("."))
+    if not checked.valid:
+        return _Validated(False, candidate, unicode_form)
+    return _Validated(True, f"{local}@{checked.value}", unicode_form)
 
 
 def _comparison(kind: str, valid: bool, declared: bool, lookup_status: str) -> EnrichmentComparison:
@@ -629,6 +812,15 @@ def _comparison(kind: str, valid: bool, declared: bool, lookup_status: str) -> E
             status="inconclusive",
             explanation="An absent or failed provider result does not confirm or contradict existing case conclusions.",
         )
+    if kind == "url":
+        return EnrichmentComparison(
+            status="inconclusive",
+            explanation=(
+                "URLhaus records that this URL has been reported as distributing malware. It is "
+                "recorded separately and is not used to overwrite or automatically resolve "
+                "existing case conclusions."
+            ),
+        )
     return EnrichmentComparison(
         status="not_comparable",
         explanation=(
@@ -638,7 +830,7 @@ def _comparison(kind: str, valid: bool, declared: bool, lookup_status: str) -> E
     )
 
 
-def _priority(item: tuple[tuple[str, str], dict[str, Any]], *, virustotal: bool) -> tuple:
+def _priority(item: tuple[tuple[str, str], dict[str, Any]], *, virustotal: bool, urlhaus: bool) -> tuple:
     """Order observables so that a truncated run keeps the most informative lookups."""
     (kind, value), entry = item
     if not entry["valid"]:
@@ -646,6 +838,13 @@ def _priority(item: tuple[tuple[str, str], dict[str, Any]], *, virustotal: bool)
     elif kind == "ip" and not ipaddress.ip_address(value).is_global:
         tier = 1
     elif kind == "file_hash" and not virustotal:
+        tier = 1
+    elif kind == "url" and not (urlhaus or virustotal):
+        tier = 1
+    elif kind == "email":
+        # No provider here answers for an address, so an email observable never displaces a
+        # lookup that would have contacted one. Its domain part is a separate observable
+        # and keeps its own place in this ordering.
         tier = 1
     else:
         tier = 0
@@ -666,6 +865,8 @@ def enrich_case(
     virustotal_api_key: str | None = None,
     abuseipdb_lookup: Callable[[str, float, str], tuple[str, str, dict[str, Any]]] = _abuseipdb_lookup,
     abuseipdb_api_key: str | None = None,
+    urlhaus_lookup: Callable[[str, float, str], tuple[str, str, dict[str, Any]]] = _urlhaus_lookup,
+    abuse_ch_api_key: str | None = None,
     cache: EnrichmentCache | None = None,
     pacer: ProviderPacer | None = None,
 ) -> CaseAnalyzerEnrichment:
@@ -694,7 +895,14 @@ def enrich_case(
         # ignorable characters), so every distinct one seen is kept rather than the first.
         if checked.unicode_form:
             entry["unicode"].append(checked.unicode_form)
-    items = sorted(grouped.items(), key=lambda item: _priority(item, virustotal=bool(virustotal_api_key)))
+    items = sorted(
+        grouped.items(),
+        key=lambda item: _priority(
+            item,
+            virustotal=bool(virustotal_api_key),
+            urlhaus=bool(abuse_ch_api_key),
+        ),
+    )
     selected = items[:limit]
 
     retrieved_at = _utc_now()
@@ -818,6 +1026,29 @@ def enrich_case(
                 "algorithm": _HASH_ALGORITHMS[len(value)],
                 "reason": "No keyless provider looks up file hashes; VirusTotal is used when a key is configured.",
             }
+        elif kind == "email":
+            details = {
+                "reason": (
+                    "No provider configured here looks up email addresses. The domain part is "
+                    "enriched as its own observable, whose source path carries a `#domain` suffix."
+                )
+            }
+        elif kind == "url":
+            if abuse_ch_api_key:
+                lookup_status, provider, details, cached_at = _call(
+                    "urlhaus",
+                    lambda request_timeout: urlhaus_lookup(value, request_timeout, abuse_ch_api_key),
+                    kind=kind,
+                    value=value,
+                )
+            else:
+                details = {
+                    "reason": (
+                        "The URLhaus API requires an abuse.ch Auth-Key; set ABUSE_CH_AUTH_KEY to look "
+                        "up URLs. VirusTotal covers URLs as well when its own key is configured, and "
+                        "the host part is enriched as its own observable either way."
+                    )
+                }
         elif kind == "domain":
             lookup_status, provider, details, cached_at = _call(
                 "cloudflare-dns",
@@ -851,8 +1082,10 @@ def enrich_case(
         (kind, value), source = item
         valid = source["valid"]
         results: list[EnrichmentObservation] = []
+        # Every kind VirusTotal has an endpoint for, except an address it declines to answer
+        # about. Email addresses are absent because VirusTotal has no endpoint for them.
         virustotal_eligible = valid and (
-            kind in {"domain", "file_hash"} or ipaddress.ip_address(value).is_global
+            kind in {"domain", "file_hash", "url"} or (kind == "ip" and ipaddress.ip_address(value).is_global)
         )
         if virustotal_eligible and virustotal_api_key:
             vt_status, vt_provider, vt_details, vt_cached_at = _call(
@@ -912,9 +1145,10 @@ def enrich_case(
     if selected:
         with ThreadPoolExecutor(max_workers=min(concurrency, len(selected))) as executor:
             # Two passes, not one, and this is what keeps pacing from starving the
-            # providers that have no rate limit. A worker sleeping out VirusTotal's
+            # providers that have no rate limit — DNS, RDAP, and URLhaus, which publishes
+            # no per-minute limit. A worker sleeping out VirusTotal's
             # interval occupies its thread; in a single pass those sleeps would sit in
-            # front of the DNS and RDAP lookups still queued behind them, and the budget
+            # front of the unpaced lookups still queued behind them, and the budget
             # would expire on waiting rather than on answers. Running every unpaced
             # lookup to completion first removes the contention instead of mitigating it.
             #

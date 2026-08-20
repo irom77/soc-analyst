@@ -230,6 +230,17 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("test-abuse-key", enrich.call_args.kwargs["abuseipdb_api_key"])
 
+    def test_enrichment_passes_configured_abuse_ch_key(self):
+        with patch.dict("os.environ", {"ABUSE_CH_AUTH_KEY": "test-abuse-ch-key"}, clear=False):
+            with patch("case_analyzer.cli.enrich_case") as enrich:
+                enrich.return_value = SimpleNamespace(observations=[], truncated=False, stopped_early=False)
+                status = cli.main(
+                    [str(self.case_path), "--enrich", "--dry-run", "--allow-enrichment-in-dry-run"]
+                )
+
+        self.assertEqual(0, status)
+        self.assertEqual("test-abuse-ch-key", enrich.call_args.kwargs["abuse_ch_api_key"])
+
     def test_cache_directory_reaches_both_the_cache_and_the_pacer(self):
         cache_dir = self.case_path.parent / "cache"
         with patch("case_analyzer.cli.enrich_case") as enrich:

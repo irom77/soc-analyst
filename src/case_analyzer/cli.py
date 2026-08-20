@@ -253,8 +253,8 @@ def main(argv=None) -> int:
             if args.dry_run:
                 print(
                     "case-analyzer: --enrich sends observable values to Cloudflare DNS, the RDAP "
-                    "registries, and, when keys are configured, VirusTotal and AbuseIPDB even "
-                    "with --dry-run; "
+                    "registries, and, when keys are configured, VirusTotal, AbuseIPDB, and "
+                    "URLhaus even with --dry-run; "
                     "only the LLM call is skipped.",
                     file=sys.stderr,
                 )
@@ -273,6 +273,7 @@ def main(argv=None) -> int:
                 failure_threshold=args.enrichment_failure_threshold,
                 virustotal_api_key=os.getenv("VIRUSTOTAL_API_KEY"),
                 abuseipdb_api_key=os.getenv("ABUSEIPDB_API_KEY"),
+                abuse_ch_api_key=os.getenv("ABUSE_CH_AUTH_KEY"),
             )
             _report_enrichment(enrichment)
         wanted = "a case summary" if args.summary else "an InvestigationReport"

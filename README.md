@@ -41,8 +41,9 @@ uv run case-analyzer examples/splunk-soar.json \
 `--enrich` performs local syntax validation, queries Cloudflare's keyless DNS-over-HTTPS
 resolver for domains, and queries the RDAP registry that holds a public IP address for
 its registration data. When `VIRUSTOTAL_API_KEY` is set, it also queries VirusTotal for
-domain, public-IP, and file-hash reputation. When `ABUSEIPDB_API_KEY` is set, it queries
-AbuseIPDB for public-IP reputation over the preceding 30 days. Keep keys in the ignored
+domain, public-IP, file-hash, and URL reputation. When `ABUSEIPDB_API_KEY` is set, it
+queries AbuseIPDB for public-IP reputation over the preceding 30 days. When
+`ABUSE_CH_AUTH_KEY` is set, it queries URLhaus for whole URLs. Keep keys in the ignored
 `.env` file; providers without a configured key are simply skipped. Enrichment still contacts providers when it is
 combined with `--dry-run`, which otherwise sends no data anywhere, so that combination
 requires `--allow-enrichment-in-dry-run` and prints a notice to standard error before
@@ -61,16 +62,46 @@ recorded as `skipped` rather than counted against the provider. The failure thre
 counts lookups that have already failed, and requests in flight are not cancelled, so a
 failing provider can receive up to one further set of concurrent lookups. The limit counts unique
 observables; configured reputation providers add separately attributed observations, so
-a public IP can produce RDAP, VirusTotal, and AbuseIPDB observations. When the limit truncates a run, observables
+a public IP can produce RDAP, VirusTotal, and AbuseIPDB observations, and a URL can
+produce URLhaus and VirusTotal observations. When the limit truncates a run, observables
 that a provider can actually answer for are kept first, then values whose type the case
 declared, then values seen in more places; invalid values are dropped first.
 
 Observables are read from `cef` blocks, from `cef_types` declarations when the ingesting
 app provided them, and from recognizable field names elsewhere in the export.
-`observable_type` is `domain`, `ip`, or `file_hash`. URLs and email addresses are
-recognized and contribute their host or domain part, whose source path is marked with a
-`#host` or `#domain` suffix; the URL and the address themselves are not looked up,
-because no configured provider covers them.
+`observable_type` is `domain`, `ip`, `file_hash`, `url`, or `email`.
+
+A URL or email field produces two observables, not one. The value itself is recorded
+under its own source path, and its host or domain part is recorded separately with a
+`#host` or `#domain` suffix on that path — a whole URL and its host are different
+questions with different providers, so neither stands in for the other. A single
+malicious path on an otherwise ordinary host is exactly the case where the difference
+matters.
+
+URLs are looked up through URLhaus, which indexes whole URLs reported as distributing
+malware, and through VirusTotal when its key is configured. URLhaus needs an abuse.ch
+Auth-Key (`ABUSE_CH_AUTH_KEY`, from an account at `auth.abuse.ch`); without one, URL
+observables are recorded with `lookup_status: "skipped"` and a reason naming the
+variable. Read the abuse.ch fair-use terms, and VirusTotal's commercial-use restrictions,
+before enabling either in an operational workflow.
+
+Email addresses are recorded but never sent anywhere: no provider configured here answers
+for an address. The observable exists so the address appears in the enrichment block with
+its source paths, and its domain part is enriched as its own observable. Because they can
+never be looked up, email observables — and URL observables when no URL provider is
+configured — sort behind everything a provider can answer for, so they never consume an
+`--enrichment-limit` slot at the expense of a real lookup.
+
+A URL is normalized only where normalization cannot change which resource is meant: the
+scheme and host are lowercased, the host is punycoded, a port the scheme already implies
+is dropped, and an empty path becomes `/`. The path, query, and fragment are preserved
+exactly as the case wrote them. **Userinfo is removed** — a URL carrying
+`user:password@` would otherwise send that credential to a third-party API and write it
+to the on-disk cache in the clear. The original text stays reachable through
+`source_paths`. Only `http`, `https`, and `ftp` URLs are treated as valid; anything else
+is recorded as invalid rather than sent to a provider that cannot answer for it. For an
+email address, the domain half is normalized exactly as a domain observable is and the
+local part is left alone, since RFC 5321 makes it case-sensitive.
 
 Internationalized domains are encoded to punycode before validation, so a name written
 in Unicode is looked up rather than discarded by the ASCII-only syntax check — the shape
@@ -127,7 +158,8 @@ the command used to regenerate it.
 Provider responses are cached on disk between runs, keyed by provider, endpoint, request
 parameters, observable type, and value together — not by provider and value, which would
 collide across observable types and across a provider's own API versions. Time to live is
-per provider: 15 minutes for DNS, an hour for reputation, a day for registration data.
+per provider: 15 minutes for DNS, an hour for reputation (VirusTotal, AbuseIPDB,
+URLhaus), a day for registration data.
 Only settled answers are stored. An error is not cached, so a timeout or an HTTP 429 is
 retried on the next run instead of being frozen into it. A cached observation carries
 `"cache": true` in its details and keeps the `retrieved_at` of the original request, so a
@@ -135,7 +167,9 @@ saved enrichment block never claims to have just fetched hour-old data; the run'
 is the block's `generated_at`.
 
 Providers with a published per-minute limit are paced: VirusTotal's public tier allows 4
-requests a minute, so requests to it are spaced 15 seconds apart. The spacing is enforced
+requests a minute, so requests to it are spaced 15 seconds apart. AbuseIPDB's free tier is
+a daily quota and abuse.ch publishes fair-use terms rather than a rate, so neither is
+paced; add an interval if either publishes a number. The spacing is enforced
 across concurrent workers by claiming the next slot before waiting, rather than by each
 worker sleeping and then firing together. Across processes it is best-effort — the claim
 is written to the cache directory with no lock, so two processes starting at the same
@@ -149,9 +183,10 @@ naming the interval — distinct from a budget exhaustion or a provider failure 
 run sets `stopped_early`. Raise `--enrichment-budget` for a cold run over a large case;
 a repeat run within the TTL costs no requests at all.
 
-Unpaced providers cannot be starved by paced ones. Every Cloudflare DNS and RDAP lookup
-completes before the first VirusTotal or AbuseIPDB request is attempted, so a worker
-waiting out a rate limit is never holding a thread that a keyless lookup still needed.
+Unpaced providers cannot be starved by paced ones. Every Cloudflare DNS, RDAP, and
+URLhaus lookup completes before the first VirusTotal or AbuseIPDB request is attempted, so
+a worker waiting out a rate limit is never holding a thread that another lookup still
+needed.
 
 `--cache-dir` sets the location (default `~/.cache/case-analyzer/enrichment`, honoring
 `XDG_CACHE_HOME` or `LOCALAPPDATA`). `--no-cache` turns the cache off; pacing still
@@ -160,7 +195,7 @@ and only its cross-process half needs the directory. A cache directory that cann
 read or written costs requests, not correctness — the run proceeds without it.
 
 Note what the cache stores: observable values taken from your cases — addresses, domains,
-file hashes — and the providers' answers about them, written outside the case file in
+file hashes, URLs — and the providers' answers about them, written outside the case file in
 plain JSON. That is deliberate, because a cache you cannot inspect is one you cannot
 audit, but it means the directory deserves the same handling as the cases themselves. Use
 `--no-cache` where it does not.

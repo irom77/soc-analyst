@@ -294,7 +294,61 @@ prefix on `value`. Deriving an actual confusability judgment — mixed-script la
 a single label being the usual signature — is a separate piece of work and is not
 attempted here.
 
-### 7. Full-URL and email lookups
+### 7. Full-URL and email lookups — DONE (2026-08-19)
+
+Implemented as two new observable types. `EnrichmentObservation.observable_type` gained
+`url` and `email`, and a URL or email field now emits **both** the value itself and the
+host or domain derived from it, rather than the derived part standing in for the whole.
+That is the point of the item: a whole URL and its host are different questions with
+different providers, and a single malicious path on an otherwise ordinary host is exactly
+where the difference decides the answer.
+
+**URLhaus is the URL provider**, gated on `ABUSE_CH_AUTH_KEY` and sent as the `Auth-Key`
+header with the URL as a POST form body — the only shape the abuse.ch API accepts, and the
+reason `_http_json` grew an optional `form` argument. It answers HTTP 200 for a refused
+query as well as for a hit, so the outcome is read from `query_status` and never from the
+status code: `ok` is `found`, `no_results` is `not_found`, and `invalid_url` or a rejected
+key is an `error` — a failure of the lookup rather than a statement about the URL.
+VirusTotal covers URLs as well, addressed by the unpadded URL-safe base64 identifier its
+API requires instead of a percent-encoded path segment. Both are recorded separately and
+marked `inconclusive`, like every other reputation source here.
+
+Three things the implementation settled that the item left open:
+
+- **Userinfo is stripped from a URL before it is looked up or recorded.** An export can
+  carry `https://user:password@host/path`, and this value is sent to a third-party API and
+  written to the on-disk cache in the clear. This follows the rule already set by
+  `CaseAnalyzerRun.endpoint_host`, which records a host and port and never the userinfo.
+  Nothing else about the URL is rewritten: the path, query, and fragment are preserved
+  byte-for-byte, because a distribution URL's identity lives in its path, and only the
+  scheme, host, an implied port, and an empty path are normalized. The original text stays
+  reachable through `source_paths`.
+- **Email addresses are recorded but never looked up.** No free provider worth trusting
+  covers an address, and inventing a lookup for one would be worse than saying so: the
+  observation carries `lookup_status: "skipped"` with a reason, and the domain half is
+  enriched as its own observable. The value is provenance — the addresses appear in the
+  enrichment block with their source paths — rather than enrichment.
+- **An uncoverable observable never costs a lookup.** Email observables, and URL
+  observables when no URL provider is configured, sort into the same priority tier as a
+  non-global IP, so `--enrichment-limit` truncation drops them before anything a provider
+  could have answered for.
+
+**ThreatFox was deliberately not added here.** Its value is domain and IP IOC matching,
+which is the separate provider-evaluation item in `TODO.md`, and adding two providers in
+one change would double the surface for no gain against this item's own goal. URLhaus is
+the URL-specific provider the item and the TODO both name.
+
+URLhaus is unpaced: abuse.ch publishes fair-use terms rather than a per-minute rate, so it
+runs in the unpaced first pass alongside DNS and RDAP and cannot be starved by
+VirusTotal's spacing. Its responses are cached under their own request id with the
+one-hour reputation TTL — which is what item 5 was sequenced ahead of this one to provide,
+and it needed no change to accept a fourth provider.
+
+Verified offline only. 198 tests pass; a synthetic case carrying a credentialed
+internationalized URL, an internationalized address, and an unparsable URL produced the
+expected observations with the credential removed and both punycode encodings applied. No
+live abuse.ch or VirusTotal request was made, and no recorded example was regenerated.
+
 
 Via URLhaus/ThreatFox as TODO already plans. Sequence **after** item 5, since new
 providers multiply request volume.
@@ -367,12 +421,16 @@ Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken firs
 because they were the only Tier 1 items with no open review question; item 1 followed
 once review points 1 and 2 were decided, which is recorded under the item itself.
 
-Tier 1 is complete, and so are Tier 2 items 5 and 6. Every review point is resolved.
-Item 7 (full-URL and email lookups) was sequenced after item 5 and is now unblocked — the
-cache and pacing it waited for are in place, which is what keeps a new provider from
-multiplying request volume. Tier 3 item 8 still needs its own design pass against a real
-control set. Tier 4 items 10 and 11 remain propose-and-discuss; the plan's own advice on
-11 is to wait until someone actually hits the input limit.
+Tiers 1 and 2 are complete — items 5, 6, and 7 all landed on 2026-08-19 — and every review
+point is resolved. Item 7 was sequenced after item 5 for a reason that held up: the cache
+and pacing absorbed a fourth provider without a change, so URLhaus multiplied neither the
+request volume nor the machinery.
+
+What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
+real control set before any code. Tier 4 items 10 and 11 remain propose-and-discuss; the
+plan's own advice on 11 is to wait until someone actually hits the input limit. Outside
+this plan, `TODO.md` still carries the remaining provider evaluation (ThreatFox,
+GreyNoise Community), which item 7 deliberately left alone.
 
 ## Review — to be verified before implementation
 

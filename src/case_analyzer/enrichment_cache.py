@@ -28,13 +28,15 @@ _TTL_SECONDS: dict[str, float] = {
     "rdap": 86400.0,
     "virustotal": 3600.0,
     "abuseipdb": 3600.0,
+    "urlhaus": 3600.0,
 }
 _DEFAULT_TTL_SECONDS = 900.0
 
 # Minimum seconds between requests to one provider. Only providers with a documented
 # per-minute limit appear here: VirusTotal's public tier allows 4 requests a minute.
-# AbuseIPDB's free tier is a daily quota with no per-minute rule, so pacing it would
-# only slow runs down without preventing anything.
+# AbuseIPDB's free tier is a daily quota with no per-minute rule, and abuse.ch publishes
+# a fair-use policy rather than a rate for URLhaus, so pacing either would only slow runs
+# down without preventing anything. Add an entry here if a provider publishes a number.
 _MIN_INTERVAL_SECONDS: dict[str, float] = {
     "virustotal": 15.0,
 }

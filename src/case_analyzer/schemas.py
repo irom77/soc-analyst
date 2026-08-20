@@ -15,7 +15,11 @@ class EnrichmentComparison(BaseModel):
 
 
 class EnrichmentObservation(BaseModel):
-    observable_type: Literal["domain", "ip", "file_hash"]
+    # `url` and `email` are the values as the case wrote them, minimally normalized. They
+    # coexist with the `domain`/`ip` observable derived from the same field, whose source
+    # path carries a `#host` or `#domain` suffix — different providers answer for a whole
+    # URL than for its host, so both are recorded rather than one standing in for the other.
+    observable_type: Literal["domain", "ip", "file_hash", "url", "email"]
     value: str
     valid: bool
     # The non-ASCII spellings the case used for this observable, which `value` is the

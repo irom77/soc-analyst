@@ -13,12 +13,13 @@ Two follow-up reviews on 2026-08-18 found six further gaps, all addressed in
 Planned improvement work beyond this list is tracked in
 [`improvement-plan-2026-08-18.md`](improvement-plan-2026-08-18.md), a tiered roadmap
 from the 2026-08-18 limitations review. Its eval-harness prerequisite, prompt-injection
-item, and all of Tier 1 and Tier 2 are done (see "Completed" below); the remaining work —
-full-URL/email lookups, then the dedicated audit mode — is open there and not duplicated
-here. Every design question in that plan's review section is now resolved.
+item, and all of Tier 1 and Tier 2 are done (see "Completed" below), as is Tier 3's
+prerequisite item 7 (full-URL and email lookups); the remaining work — the dedicated
+audit mode, then the Tier 4 structural items — is open there and not duplicated here.
+Every design question in that plan's review section is now resolved.
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (179 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (198 offline tests; no credentials or network needed).
 
 ## Existing
 
@@ -34,14 +35,46 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   schema and prompt tests plus representative recorded examples before enabling any
   provider-backed automation.
 - [ ] Address payload quality, duplicated `source_data`, and excessive noisy enrichment. Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7) and is still open; see Tier 4 item 10 of the improvement plan. The provider cost and rate-limit half (L-5) is done — the response cache and 15-second VirusTotal pacing landed with Tier 2 item 5, which is what the `HTTP 429` on the second live run called for.
-- [ ] Evaluate additional free enrichment providers in this order: ThreatFox for domain/IP IOC matches, GreyNoise Community for internet-scanner context, and URLhaus after complete URL extraction is supported. Keep provider results separately attributed, respect enrichment limits, and treat `not_found` as inconclusive; caching and per-provider pacing are now handled centrally in `enrichment_cache.py`, so a new provider needs a request id and, if it publishes a per-minute limit, an interval. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
+- [ ] Evaluate the remaining free enrichment providers: ThreatFox for domain/IP IOC matches and GreyNoise Community for internet-scanner context. URLhaus is done — it landed with item 7 once whole URLs became observables. Keep provider results separately attributed, respect enrichment limits, and treat `not_found` as inconclusive; caching and per-provider pacing are now handled centrally in `enrichment_cache.py`, so a new provider needs a request id and, if it publishes a per-minute limit, an interval. Document and enforce each provider's API quota, fair-use terms, and commercial-use restrictions before enabling it in operational workflows.
 - [x] Add optional AbuseIPDB public-IP reputation through the v2 `check` endpoint. It uses a 30-day report window, runs only when `ABUSEIPDB_API_KEY` is configured, and keeps the result separately attributed. The Standard tier currently permits 1,000 `check` requests per day; higher account tiers have higher limits. Operators remain responsible for confirming that their account and use comply with the provider's current terms.
 - [x] Add `--summary`, which asks the model to describe the input case in prose and stops, printing `{"summary": ...}` instead of an `InvestigationReport`. It reuses the analysis payload under a separate `prompts/summary.md` system prompt that forbids a verdict, severity, attack chain, or remediation, and returns the `CaseSummary` schema. `analyze_case` and `summarize_case` now share one provider call and its sanitized error mapping. With `--dry-run` no request is sent; `--explain` shows the summary prompt.
 - [ ] Remove the deprecated `explain_case_analysis` and `explain-case-analysis` aliases in the next breaking release; use `case-analyzer --explain` instead. The `--help` text already states that the alias forwards neither `--output` nor `--enrich` (L-9).
 
 ## Extraction coverage
 
-- [ ] Look up the URL and the email address themselves once a provider covers them; today only their host or domain part is enriched, and `#host`/`#domain` marks the derived source path. URLhaus is the candidate for URLs (see the provider item above).
+- [ ] Revisit email addresses if a provider worth trusting starts covering them. They are
+  extracted and recorded today, but nothing looks them up, so the observation is
+  provenance rather than enrichment.
+
+## Completed (2026-08-19 full-URL and email observables)
+
+- [x] Tier 2 item 7 — the URL and the email address are now observables in their own
+  right, not just the `#host`/`#domain` part derived from them. `observable_type` gained
+  `url` and `email`; a URL or email field emits both the value and its host or domain, so
+  a whole URL and its host stay separate questions with separate providers.
+- [x] URLhaus (`https://urlhaus-api.abuse.ch/v1/url/`) added as the URL provider, gated on
+  `ABUSE_CH_AUTH_KEY` and sending it as the `Auth-Key` header with the URL as a POST form
+  body. It answers HTTP 200 for a refused query as well as a hit, so the outcome is read
+  from `query_status`: `ok` is `found`, `no_results` is `not_found`, anything else is an
+  error. VirusTotal covers URLs too, by the unpadded URL-safe base64 identifier its API
+  requires. Both are separately attributed and `inconclusive`, never a verdict.
+- [x] URL normalization keeps the path, query, and fragment byte-for-byte and folds only
+  the scheme, host, an implied port, and an empty path. **Userinfo is stripped**, so a
+  `user:password@` URL never reaches a third-party API or the plaintext cache; the
+  original text stays reachable through `source_paths`. Only `http`, `https`, and `ftp`
+  are valid schemes. An email's domain half is normalized as a domain and its local part
+  is left alone, since RFC 5321 makes it case-sensitive.
+- [x] Email addresses are recorded but never sent anywhere — no provider here answers for
+  an address. Email observables, and URL observables when no URL provider is configured,
+  sort behind everything a provider can answer for, so they never take an
+  `--enrichment-limit` slot from a real lookup.
+- [x] URLhaus is unpaced (abuse.ch publishes fair-use terms, not a rate), so it runs in the
+  unpaced first pass alongside DNS and RDAP and cannot be starved by VirusTotal's spacing.
+  Its responses are cached under their own request id with the one-hour reputation TTL.
+- [x] Verified offline: 198 tests pass, and a synthetic case carrying a credentialed
+  internationalized URL, an internationalized address, and an unparsable URL produced the
+  expected seven observations with the credential removed. No live abuse.ch or VirusTotal
+  request was made and no recorded example was regenerated.
 
 ## Completed (2026-08-19 enrichment caching and pacing)
 
