@@ -523,7 +523,9 @@ uv run ruff check src tests
 - `soar`: maps common case, container, alert, detection, artifact, observable, action, and activity fields used by other SOAR platforms.
 - `auto`: uses recognizable source fields and otherwise selects `generic`.
 
-Every adapter retains the complete export under `case.source_data`, so the model can use evidence not covered by the initial mapping. SOAR export shapes vary between platforms; validate the dry-run output and refine the adapter against a sanitized export before operational use.
+Every adapter retains the complete export under `case.source_data`, so the model can use evidence not covered by the initial mapping. That is not merely a safety net: the SOAR adapter never descends into `child_containers`, so for exports shaped that way `source_data` is the only carrier of the artifacts. SOAR export shapes vary between platforms; validate the dry-run output and refine the adapter against a sanitized export before operational use.
+
+`--reduce-source-data` sends only the top-level source fields normalization did not already lift, which cuts roughly a quarter of the payload on SOAR-shaped cases while keeping nested content such as `child_containers` intact. It is **off by default** because it is not behavior-neutral: on the six-case benchmark two cases moved verdict or confidence under it, both staying inside their allowed sets and neither reasoning worse. It reduces only what is *sent* — `case.source_data` itself stays whole, because enrichment walks it to find observables and roots every `source_paths` value there. Measurements are in [`evals/source-data-residue-2026-08-20.md`](evals/source-data-residue-2026-08-20.md).
 
 An optional knowledge file must be a JSON array:
 

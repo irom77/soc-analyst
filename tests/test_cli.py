@@ -230,6 +230,38 @@ class ExplainCliTests(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertEqual("test-abuse-key", enrich.call_args.kwargs["abuseipdb_api_key"])
 
+    def test_reduce_source_data_defaults_off_and_is_passed_when_set(self):
+        """Item 10 is opt-in: the measured verdict shifts mean it must not change by default."""
+        with patch("case_analyzer.cli.analyze_case") as analyze:
+            analyze.return_value = AnalyzedReport(
+                verdict="Suspicious",
+                severity="medium",
+                impact="none",
+                priority="medium",
+                confidence="Low",
+                digest="d",
+                case_analyzer_run=_run_block(),
+            )
+            cli.main([str(self.case_path)])
+            self.assertFalse(analyze.call_args.kwargs["reduce_source_data"])
+
+            cli.main([str(self.case_path), "--reduce-source-data"])
+            self.assertTrue(analyze.call_args.kwargs["reduce_source_data"])
+
+    def test_reduce_source_data_shrinks_the_dry_run_payload(self):
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cli.main([str(self.case_path), "--dry-run"])
+            full = buffer.getvalue()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            cli.main([str(self.case_path), "--dry-run", "--reduce-source-data"])
+            reduced = buffer.getvalue()
+
+        self.assertIn('"title": "Example"', full)
+        # `title` is lifted into the normalized case, so source_data need not repeat it.
+        self.assertLess(len(reduced), len(full))
+
     def test_enrichment_passes_configured_abuse_ch_key(self):
         with patch.dict("os.environ", {"ABUSE_CH_AUTH_KEY": "test-abuse-ch-key"}, clear=False):
             with patch("case_analyzer.cli.enrich_case") as enrich:

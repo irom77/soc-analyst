@@ -1,0 +1,115 @@
+{
+  "verdict": "Insufficient Data",
+  "severity": "Low",
+  "impact": "Low",
+  "priority": "Low",
+  "confidence": "Low",
+  "digest": "A user reported a slow laptop, and a DNS query to 'cdn.example.invalid' from 'LAPTOP-77' was observed. However, there is insufficient corroborating evidence or endpoint telemetry to confirm a C2 or malware incident.",
+  "affected_assets": [
+    {
+      "asset_type": "hostname",
+      "asset_value": "LAPTOP-77"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "User Reported Slow Laptop",
+      "finding_type": "User Observation",
+      "subject": "User",
+      "evidence": "A user reported a slow laptop and said it might be hacked.",
+      "conclusion": "This is the initial trigger for the investigation, but lacks technical detail to confirm malicious activity.",
+      "source_paths": [
+        "comments[0].content"
+      ]
+    },
+    {
+      "title": "DNS Query to cdn.example.invalid",
+      "finding_type": "Network Activity",
+      "subject": "LAPTOP-77",
+      "evidence": "A DNS query for 'cdn.example.invalid' was observed originating from 'LAPTOP-77'. The detection rule named this a 'CRITICAL command-and-control indicator'.",
+      "conclusion": "This DNS query is flagged as a potential C2 indicator, but its maliciousness is unconfirmed without further context.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.sourceHostName",
+        "source_data.child_containers[0].artifacts[0].cef.query",
+        "source_data.child_containers[0].name"
+      ]
+    },
+    {
+      "title": "Lack of Corroborating Evidence for DNS Query",
+      "finding_type": "Data Gap",
+      "subject": "DNS observation",
+      "evidence": "The alert for the DNS query contains no response address, timestamp, process attribution, reputation result, packet data, or corroborating event.",
+      "conclusion": "The C2 classification for 'cdn.example.invalid' is based solely on the detection rule name, not on observed malicious behavior or external reputation.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "No Endpoint Telemetry Collected",
+      "finding_type": "Data Gap",
+      "subject": "LAPTOP-77",
+      "evidence": "No endpoint telemetry has yet been collected from LAPTOP-77.",
+      "conclusion": "Critical information about processes, network connections, and file system activity on LAPTOP-77 is missing, preventing a thorough investigation.",
+      "source_paths": [
+        "comments[0].content"
+      ]
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "A user reported a slow laptop, potentially indicating an initial compromise or suspicious activity. A DNS query to a potential C2 domain was observed, but its context is unknown."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T09:30:00Z",
+      "attack_behavior": "Case opened based on user report and initial alert for potential C2 activity.",
+      "evidence_field": "created_at"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "domain",
+      "value": "cdn.example.invalid",
+      "context": "Potential C2 domain, but unconfirmed due to lack of corroborating evidence."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Data Collection",
+      "description": "Collect full endpoint telemetry (process, network, file system logs) from LAPTOP-77 to gather more evidence.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Investigation",
+      "description": "Investigate the user's reported 'slow laptop' symptoms and the context of the DNS query on LAPTOP-77.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The actual maliciousness or benign nature of 'cdn.example.invalid'.",
+    "The specific process or application responsible for the DNS query on LAPTOP-77.",
+    "The full network activity and system state of LAPTOP-77.",
+    "Whether the user's 'slow laptop' is directly related to the observed DNS query or any malicious activity.",
+    "If any data exfiltration or ransomware activity has occurred."
+  ],
+  "truncated_fields": [],
+  "case_analyzer_run": {
+    "generated_at": "2026-08-20T12:07:20.002989Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "cf4c5fd563d303572a1e23a012d8982bdf10515ac3a8d5bec5c9cc4ceb51365b",
+    "payload_sha256": "f776217a65a52d5ccbefe7387cf572da9b5981426e9063ccafa9e0d4d7857edf",
+    "input_file_sha256": "",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {
+      "ran": true,
+      "problems": []
+    }
+  }
+}

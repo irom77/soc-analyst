@@ -388,12 +388,38 @@ system prompts, plus BEGIN/END payload delimiters via `render_payload_message` i
 (measurement only) is superseded; the measured result is recorded in
 [`evals/baseline-2026-08-18.md`](evals/baseline-2026-08-18.md).
 
-### 10. Deduplicate `source_data`
+### 10. Deduplicate `source_data` — DONE (2026-08-20), shipped opt-in
 
-Measured duplication is 1.52x on `examples/splunk-soar.json` (M-7). Rather than
-dropping `source_data` (the model genuinely uses it), send only the source fields the
-normalizer did not already lift, or a diff-style residue. Trickiest change to make
-safely — measure token savings on the recorded examples before committing to it.
+Implemented as `source_data_residue()` in `adapters.py`, applied in
+`build_analysis_payload` and exposed as `--reduce-source-data`, **off by default**. The
+measurement the plan asked for is in
+[`evals/source-data-residue-2026-08-20.md`](evals/source-data-residue-2026-08-20.md) and
+changed the shape of the item in three ways:
+
+- The 1.52x figure understates the duplication and overstates the saving. `source_data` is
+  75% of the payload across the recorded examples, but residue recovers only 14% of those
+  characters — 25.7% on the benchmark corpus, 23% on `splunk-soar.json`, and **1%** on
+  `unknown.json`, the largest payload, whose bulk is a `raw`/`parsed` pair duplicated
+  *inside* `source_data` where a top-level filter cannot see it. Collapsing those pairs is
+  a separate problem, not this one.
+- "The model genuinely uses it" is truer than the parenthetical suggests. Four of the six
+  benchmark cases lift zero artifacts and zero alerts; their evidence sits in
+  `child_containers`, which no adapter descends into. Dropping `source_data` outright would
+  delete the evidence base for most of the corpus, so the residue shape is what makes the
+  change safe rather than a stylistic preference.
+- The reduction cannot happen in the adapter. `enrichment.py` walks `case.source_data` and
+  roots `source_paths` there, so the stored case stays whole and only the sent copy shrinks.
+
+Benchmarked at three samples: six of six pass, both injection cases hold, and neither of
+the two cases that moved reasoned worse — `scary-words-benign` chose `False Positive` over
+`Benign` on the same digest, and `ip-verdict-claim` kept its verdict with more evidence
+findings. It ships off by default because two of six moving is not behaviour-neutral, and
+three samples cannot promise a seventh case would not.
+
+Original text: measured duplication is 1.52x on `examples/splunk-soar.json` (M-7). Rather
+than dropping `source_data` (the model genuinely uses it), send only the source fields the
+normalizer did not already lift, or a diff-style residue. Trickiest change to make safely —
+measure token savings on the recorded examples before committing to it.
 
 ### 11. Context-overflow strategy
 
@@ -446,8 +472,10 @@ took 93.90s — but VirusTotal's quota was exhausted, so item 7's base64 URL ide
 the one enrichment path still resting on a fixture and needs a key with quota available.
 
 What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
-real control set before any code. Tier 4 items 10 and 11 remain propose-and-discuss; the
-plan's own advice on 11 is to wait until someone actually hits the input limit. Outside
+real control set before any code. Item 10 landed opt-in on 2026-08-20; Tier 4 item 11
+remains propose-and-discuss, and the plan's own advice on it is to wait until someone
+actually hits the input limit — though item 10's measurement found the raw/parsed
+duplication inside `source_data` that would matter most if they did. Outside
 this plan, `TODO.md` still carries the remaining provider evaluation (ThreatFox,
 GreyNoise Community), which item 7 deliberately left alone.
 

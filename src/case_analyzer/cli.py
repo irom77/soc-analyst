@@ -145,6 +145,17 @@ def _parser() -> argparse.ArgumentParser:
         help="Timeout in seconds for the LLM request (default 120)",
     )
     parser.add_argument(
+        "--reduce-source-data",
+        action="store_true",
+        help=(
+            "Send only the source fields normalization did not already lift, instead of the "
+            "whole export. Cuts roughly a quarter of the payload on SOAR-shaped cases and "
+            "keeps nested content such as child_containers, which nothing else carries. Off "
+            "by default because it is not behavior-neutral: see "
+            "evals/source-data-residue-2026-08-20.md"
+        ),
+    )
+    parser.add_argument(
         "--max-input-bytes",
         type=int,
         default=5_000_000,
@@ -161,7 +172,9 @@ def _print_json(value) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
 
 
-def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = False) -> None:
+def _explain(
+    case, knowledge, knowledge_path, user_input, *, summary: bool = False, reduce_source_data: bool = False
+) -> None:
     _heading("1. Normalize the exported Case")
     _print_json(case.model_dump(mode="json", exclude_none=True))
 
@@ -174,11 +187,20 @@ def _explain(case, knowledge, knowledge_path, user_input, *, summary: bool = Fal
 
     _heading(f"3. Build the structured {'case-summary' if summary else 'investigation'} request")
     build_messages = build_summary_messages if summary else build_analysis_messages
-    messages = build_messages(case, knowledge_records=knowledge, user_input=user_input)
+    # Passed through so --explain keeps showing the exact messages that would be sent;
+    # printing the full payload while --reduce-source-data shrinks the real one would
+    # make this preview a lie.
+    messages = build_messages(
+        case, knowledge_records=knowledge, user_input=user_input, reduce_source_data=reduce_source_data
+    )
     print("SystemMessage:")
     print(messages[0]["content"])
     print("\nHumanMessage (JSON payload, sent between untrusted-data markers):")
-    _print_json(build_analysis_payload(case, knowledge_records=knowledge, user_input=user_input))
+    _print_json(
+        build_analysis_payload(
+            case, knowledge_records=knowledge, user_input=user_input, reduce_source_data=reduce_source_data
+        )
+    )
 
 
 def _report_checks(checks: RunChecks) -> None:
@@ -278,9 +300,21 @@ def main(argv=None) -> int:
             _report_enrichment(enrichment)
         wanted = "a case summary" if args.summary else "an InvestigationReport"
         if args.explain:
-            _explain(case, knowledge, args.knowledge, args.user_input, summary=args.summary)
+            _explain(
+                case,
+                knowledge,
+                args.knowledge,
+                args.user_input,
+                summary=args.summary,
+                reduce_source_data=args.reduce_source_data,
+            )
         if args.dry_run:
-            result = build_analysis_payload(case, knowledge_records=knowledge, user_input=args.user_input)
+            result = build_analysis_payload(
+                case,
+                knowledge_records=knowledge,
+                user_input=args.user_input,
+                reduce_source_data=args.reduce_source_data,
+            )
             if args.explain:
                 _heading("4. Stop without invoking the LLM")
                 print(f"Preview complete. Remove --dry-run to request {wanted}.")
@@ -296,6 +330,7 @@ def main(argv=None) -> int:
                 base_url=args.base_url,
                 api_key=args.api_key,
                 timeout=args.llm_timeout,
+                reduce_source_data=args.reduce_source_data,
                 # Hashed from the file as it sits on disk, before normalization, so a
                 # saved report can be tied back to the export it came from.
                 input_file_sha256=sha256_file(args.input),

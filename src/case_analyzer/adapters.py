@@ -37,6 +37,43 @@ def normalize_case(data: Mapping[str, Any], source_format: str = "auto") -> Cano
         raise ValueError(f"Unsupported input format: {selected}") from None
 
 
+# Top-level source keys each adapter may consume, as the `_first(...)` alias groups below
+# list them. Kept next to the adapters so the two cannot drift: a key added to an alias
+# group must be added here, or the residue would resend a field that was already lifted.
+CONSUMED_SOURCE_KEYS: dict[str, frozenset[str]] = {
+    "generic": frozenset({
+        "case_id", "id", "caseId", "title", "name", "case_name", "description", "summary",
+        "severity", "priority", "status", "state", "created_at", "createdAt", "create_time",
+        "updated_at", "updatedAt", "update_time", "tags", "alerts", "events", "artifacts",
+        "observables", "indicators", "comments", "notes", "timeline", "source", "platform",
+    }),
+    "soar": frozenset({
+        "case_id", "caseId", "container_id", "id", "title", "name", "case_name", "description",
+        "data", "summary", "severity", "priority", "container_status", "status", "create_time",
+        "start_time", "created_at", "update_time", "end_time", "updated_at", "tags", "label",
+        "alerts", "events", "detections", "artifacts", "observables", "indicators", "entities",
+        "comments", "notes", "timeline", "actions", "activities", "source", "platform", "product",
+    }),
+}
+
+
+def source_data_residue(case: "CanonicalCase") -> dict[str, Any]:
+    """`case.source_data` minus the top-level keys normalization already lifted.
+
+    Only the *sent* payload is reduced; `case.source_data` itself stays whole, because
+    enrichment walks it to find observables and roots every `source_paths` value at
+    `source_data.`. Nested content is untouched: the SOAR adapter never descends into
+    `child_containers`, so for many real exports that key is the only carrier of the
+    artifacts and must survive.
+    """
+    consumed = CONSUMED_SOURCE_KEYS.get(_format_of(case), frozenset())
+    return {key: value for key, value in case.source_data.items() if key not in consumed}
+
+
+def _format_of(case: "CanonicalCase") -> str:
+    return "generic" if case.source == "generic" else "soar"
+
+
 def _generic(data: Mapping[str, Any]) -> CanonicalCase:
     case_id = str(_first(data, "case_id", "id", "caseId"))
     title = str(_first(data, "title", "name", "case_name"))

@@ -26,6 +26,7 @@ from litellm.exceptions import (
 from openai import OpenAIError
 from pydantic import BaseModel, ValidationError
 
+from .adapters import source_data_residue
 from .checks import check_report
 from .provenance import build_run_metadata
 from .schemas import (
@@ -63,6 +64,7 @@ def build_analysis_payload(
     *,
     knowledge_records: list[dict[str, Any]] | None = None,
     user_input: str = "",
+    reduce_source_data: bool = False,
 ) -> dict[str, Any]:
     payload = {
         # `mode="json"` keeps every value JSON-serializable, including the
@@ -70,6 +72,14 @@ def build_analysis_payload(
         "case": case.model_dump(mode="json", exclude_none=True),
         "knowledge": {"records": knowledge_records or []},
     }
+    # Opt-in, because the reduction is not behaviour-neutral: see the measurement in
+    # `evals/source-data-residue-2026-08-20.md`. The reduction happens here rather than in
+    # the adapter on purpose -- enrichment walks `case.source_data` and roots its
+    # `source_paths` there, so the stored case stays whole and only the sent copy shrinks.
+    # Residue is a subset of the full case, so an evidence path the model can cite from it
+    # still resolves in the post-check.
+    if reduce_source_data:
+        payload["case"]["source_data"] = source_data_residue(case)
     if user_input:
         payload["user_input"] = user_input
     return payload
@@ -102,10 +112,16 @@ def build_analysis_messages(
     *,
     knowledge_records: list[dict[str, Any]] | None = None,
     user_input: str = "",
+    reduce_source_data: bool = False,
 ) -> list:
     return _messages(
         _system_prompt(),
-        build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input),
+        build_analysis_payload(
+            case,
+            knowledge_records=knowledge_records,
+            user_input=user_input,
+            reduce_source_data=reduce_source_data,
+        ),
     )
 
 
@@ -114,11 +130,17 @@ def build_summary_messages(
     *,
     knowledge_records: list[dict[str, Any]] | None = None,
     user_input: str = "",
+    reduce_source_data: bool = False,
 ) -> list:
     """Same case payload as the analysis request, asked for as a narrative summary."""
     return _messages(
         _summary_prompt(),
-        build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input),
+        build_analysis_payload(
+            case,
+            knowledge_records=knowledge_records,
+            user_input=user_input,
+            reduce_source_data=reduce_source_data,
+        ),
     )
 
 
@@ -247,6 +269,7 @@ def analyze_case(
     api_key: str | None = None,
     timeout: float | None = None,
     input_file_sha256: str = "",
+    reduce_source_data: bool = False,
 ) -> AnalyzedReport:
     """Request an investigation report, post-check it, and record how it was produced.
 
@@ -254,7 +277,12 @@ def analyze_case(
     that hand over an already-parsed case leave it empty, and the payload hash still
     identifies the exact input the model saw.
     """
-    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
+    payload = build_analysis_payload(
+        case,
+        knowledge_records=knowledge_records,
+        user_input=user_input,
+        reduce_source_data=reduce_source_data,
+    )
     messages = _messages(_system_prompt(), payload)
     report, resolved = _request_structured(
         InvestigationReport,
@@ -289,13 +317,19 @@ def summarize_case(
     api_key: str | None = None,
     timeout: float | None = None,
     input_file_sha256: str = "",
+    reduce_source_data: bool = False,
 ) -> AnalyzedSummary:
     """Request a narrative summary and record how it was produced.
 
     No post-check runs: a summary has no citations or truncation claims to check, so
     the run block reports `checks.ran = false` rather than an empty clean result.
     """
-    payload = build_analysis_payload(case, knowledge_records=knowledge_records, user_input=user_input)
+    payload = build_analysis_payload(
+        case,
+        knowledge_records=knowledge_records,
+        user_input=user_input,
+        reduce_source_data=reduce_source_data,
+    )
     messages = _messages(_summary_prompt(), payload)
     summary, resolved = _request_structured(
         CaseSummary,

@@ -1,6 +1,14 @@
+import pathlib
+import re
 import unittest
 
-from case_analyzer.adapters import detect_format, normalize_case
+from case_analyzer import adapters
+from case_analyzer.adapters import (
+    CONSUMED_SOURCE_KEYS,
+    detect_format,
+    normalize_case,
+    source_data_residue,
+)
 
 
 class DetectFormatTests(unittest.TestCase):
@@ -98,3 +106,71 @@ class NormalizeCaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceDataResidueTests(unittest.TestCase):
+    """Improvement-plan item 10: send only what normalization did not already lift."""
+
+    def test_residue_drops_lifted_keys_and_keeps_the_rest(self):
+        case = normalize_case(
+            {
+                "id": "42",
+                "name": "Case",
+                "description": "d",
+                "artifacts": [{"cef": {"sourceAddress": "8.8.8.8"}}],
+                "sensitivity": "amber",
+                "custom_fields": {"queue": "tier2"},
+            },
+            "soar",
+        )
+        residue = source_data_residue(case)
+
+        # Lifted, so resending them is the duplication the item is about.
+        self.assertNotIn("id", residue)
+        self.assertNotIn("description", residue)
+        self.assertNotIn("artifacts", residue)
+        # Never lifted by any adapter, so the model would lose them entirely.
+        self.assertEqual("amber", residue["sensitivity"])
+        self.assertEqual({"queue": "tier2"}, residue["custom_fields"])
+
+    def test_child_containers_survive_because_nothing_else_carries_them(self):
+        """The SOAR adapter never descends into `child_containers`.
+
+        For four of the six benchmark cases it is the only carrier of the artifacts, so
+        a residue that dropped it would delete the evidence rather than deduplicate it.
+        """
+        raw = {
+            "id": "7",
+            "name": "Case",
+            "child_containers": [{"artifacts": [{"cef": {"sourceAddress": "8.8.8.8"}}]}],
+        }
+        case = normalize_case(raw, "soar")
+
+        self.assertEqual([], case.artifacts)
+        self.assertEqual(raw["child_containers"], source_data_residue(case)["child_containers"])
+
+    def test_the_stored_case_is_not_reduced(self):
+        """Enrichment walks `case.source_data` and roots `source_paths` there."""
+        case = normalize_case({"id": "1", "name": "Case", "description": "d"}, "soar")
+
+        source_data_residue(case)
+
+        self.assertEqual("d", case.source_data["description"])
+
+    def test_every_alias_group_is_listed_as_consumed(self):
+        """Guards the one way these two can drift apart.
+
+        `CONSUMED_SOURCE_KEYS` is written by hand next to the adapters; a key added to a
+        `_first(...)` alias group but not here would be lifted and then resent anyway,
+        silently undoing the saving for that field.
+        """
+        source = pathlib.Path(adapters.__file__).read_text(encoding="utf-8")
+        for adapter_name, marker in (("generic", "def _generic"), ("soar", "def _soar")):
+            body = source[source.index(marker) :]
+            body = body[: body.index("source_data=dict(data)")]
+            quoted = set(re.findall(r'_first\(\s*data,\s*([^)]*?)(?:,\s*default=[^)]*)?\)', body))
+            names = {name.strip().strip('"\'') for group in quoted for name in group.split(",")}
+            names |= {match for match in re.findall(r'data\.get\("([a-z_]+)"\)', body)}
+            names.discard("")
+            missing = names - CONSUMED_SOURCE_KEYS[adapter_name]
+            self.assertEqual(set(), missing, f"{adapter_name} alias keys missing from CONSUMED_SOURCE_KEYS")

@@ -1,0 +1,89 @@
+{
+  "verdict": "Benign",
+  "severity": "Low",
+  "impact": "Low",
+  "priority": "Low",
+  "confidence": "High",
+  "digest": "A single failed VPN authentication for user m.alvarez from IP 198.51.100.24 was immediately followed by a successful, MFA-confirmed login from the same user and IP. Evidence strongly suggests a user mistyped their password, and no other suspicious activity was observed for this account.",
+  "affected_assets": [
+    {
+      "asset_type": "User Account",
+      "asset_value": "m.alvarez"
+    },
+    {
+      "asset_type": "IP Address",
+      "asset_value": "198.51.100.24"
+    }
+  ],
+  "evidence_findings": [
+    {
+      "title": "Initial VPN Authentication Failure",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "User 'm.alvarez' experienced a 'vpn-auth-failure' from IP address '198.51.100.24'.",
+      "conclusion": "An initial attempt to authenticate to the VPN failed.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.act",
+        "source_data.child_containers[0].artifacts[0].cef.sourceUserName",
+        "source_data.child_containers[0].artifacts[0].cef.sourceAddress"
+      ]
+    },
+    {
+      "title": "Subsequent Successful VPN Authentication",
+      "finding_type": "Authentication Event",
+      "subject": "m.alvarez",
+      "evidence": "One minute after the failure, user 'm.alvarez' successfully authenticated to the VPN ('vpn-auth-success') from the same IP address '198.51.100.24'. This login was MFA-confirmed and originated from the user's registered laptop and usual home address.",
+      "conclusion": "The user successfully gained access to the VPN, confirming their identity through MFA and using a known device and location.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.act",
+        "source_data.child_containers[0].artifacts[0].cef.sourceUserName",
+        "source_data.child_containers[0].artifacts[0].cef.sourceAddress",
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    },
+    {
+      "title": "User Error Indication",
+      "finding_type": "Contextual Information",
+      "subject": "VPN Authentication",
+      "evidence": "The failed login is explicitly noted as a 'Password mistyped once at 08:03Z'. There were 'No other failures for this account in the preceding 30 days'.",
+      "conclusion": "The single failed authentication event is attributed to user error (mistyped password) rather than a malicious attempt.",
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].notes[0].content"
+      ]
+    }
+  ],
+  "attack_chain": [],
+  "attack_timeline": [
+    {
+      "timestamp": "2026-08-17T08:03:00Z",
+      "attack_behavior": "VPN authentication failure for m.alvarez from 198.51.100.24 (password mistyped).",
+      "evidence_field": "source_data.child_containers[0].artifacts[0].notes[0].content"
+    },
+    {
+      "timestamp": "2026-08-17T08:04:00Z",
+      "attack_behavior": "Successful MFA-confirmed VPN authentication for m.alvarez from 198.51.100.24.",
+      "evidence_field": "source_data.child_containers[0].artifacts[0].notes[0].content"
+    }
+  ],
+  "ioc_indicators": [],
+  "remediations": [],
+  "unknowns": [],
+  "truncated_fields": [],
+  "case_analyzer_run": {
+    "generated_at": "2026-08-20T12:10:04.460786Z",
+    "package_version": "0.1.0",
+    "report_schema_version": "1",
+    "model": "gemini-2.5-flash",
+    "endpoint_host": "generativelanguage.googleapis.com",
+    "system_prompt_sha256": "cf4c5fd563d303572a1e23a012d8982bdf10515ac3a8d5bec5c9cc4ceb51365b",
+    "payload_sha256": "f2875529191623a5774bc3f0625483e0272c4aa4027c0f5f8bdb4985abb8680f",
+    "input_file_sha256": "",
+    "has_enrichment": false,
+    "has_knowledge": false,
+    "has_user_input": false,
+    "checks": {
+      "ran": true,
+      "problems": []
+    }
+  }
+}
