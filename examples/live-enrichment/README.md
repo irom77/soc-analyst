@@ -165,10 +165,21 @@ by hand after 20 seconds of idle returned the same 429, so no spacing would have
 One domain lookup did get through and returned real `last_analysis_stats`, which confirms
 the domain endpoint.
 
-**Item 7's base64 URL identifier remains unverified.** Both URL attempts hit 429 before
-VirusTotal ever evaluated the identifier, and a 429 says nothing about whether the
-unpadded URL-safe encoding is the right one. This is the last piece still resting on a
-fixture written alongside the code it checks. It needs a key with quota available.
+**Item 7's base64 URL identifier is not confirmed live.** Both URL attempts hit 429
+before VirusTotal ever evaluated the identifier, and a 429 says nothing about whether the
+unpadded URL-safe encoding is the right one.
+
+Mocking cannot close this, because the mock would be built from the same belief that
+produced the code. What it can do is stop the fixture being *ours*: the encoding is now
+pinned to the worked example published in VirusTotal's v3 URL documentation, which
+specifies "unpadded base64 encoding, as defined in RFC 4648 section 3.2". That turned out
+to matter more than expected — the previous test would have passed under padded standard
+base64, because `https://evil.test/beacon` is exactly 24 bytes (no padding) and its
+base64 contains no `+` or `/`, so both alphabets give the same string. The documented
+40-byte example needs two padding characters and does discriminate.
+
+What remains unproven is narrower: that the live API accepts the documented form. That
+needs a key with quota available.
 
 ### What the failure did demonstrate
 

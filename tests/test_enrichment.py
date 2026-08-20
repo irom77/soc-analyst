@@ -1073,6 +1073,33 @@ class UrlAndEmailEnrichmentTests(unittest.TestCase):
         self.assertNotIn("=", request.call_args.args[0].rsplit("/", 1)[1])
         self.assertEqual(("found", -7, "Login"), (status, details["reputation"], details["title"]))
 
+    def test_the_url_identifier_matches_virustotals_documented_example(self):
+        """Pins the encoding against a value VirusTotal published, not one we computed.
+
+        The test above derives its expectation with the same expression the
+        implementation uses, so it confirms the identifier is placed in the request
+        correctly but has no power over the encoding itself. Measured, not assumed:
+        swapping the implementation to padded standard base64 leaves that test passing,
+        because `https://evil.test/beacon` is exactly 24 bytes -- a multiple of 3, so no
+        padding -- and its base64 happens to contain no `+` or `/`, making the two
+        alphabets produce identical output for it.
+
+        This literal is the worked example from VirusTotal's v3 URL documentation, which
+        specifies "unpadded base64 encoding, as defined in RFC 4648 section 3.2". At 40
+        bytes it needs two padding characters, so it does discriminate. A live call would
+        still be better; VirusTotal's quota blocked one on 2026-08-20.
+        """
+        documented = "aHR0cDovL3d3dy5zb21lZG9tYWluLmNvbS90aGlzL2lzL215L3VybA"
+        with patch(
+            "case_analyzer.enrichment._http_json",
+            return_value=(200, {"data": {"attributes": {}}}, "x"),
+        ) as request:
+            enrichment_module._virustotal_lookup(
+                "url", "http://www.somedomain.com/this/is/my/url", 1.0, "key"
+            )
+
+        self.assertEqual(f"https://www.virustotal.com/api/v3/urls/{documented}", request.call_args.args[0])
+
     def test_a_url_reaches_both_urlhaus_and_virustotal_and_its_host_reaches_dns(self):
         result = enrich_case(
             self._case("https://evil.test/beacon"),

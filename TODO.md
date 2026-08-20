@@ -24,16 +24,19 @@ cache and pacer, and item 7's URLhaus path, and fixing a credential leak it expo
 [`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 Check the current state with `uv run python -m unittest discover -s tests -t .` and
-`uv run ruff check src tests` (207 offline tests; no credentials or network needed).
+`uv run ruff check src tests` (208 offline tests; no credentials or network needed).
 
 ## Existing
 
-- [ ] Verify VirusTotal's base64 URL identifier against a key with quota available. The
-  2026-08-20 run reached VirusTotal but its quota was exhausted, so both URL attempts
-  returned HTTP 429 before the identifier was ever evaluated; a 429 does not tell us the
-  unpadded URL-safe encoding is correct. This is the last enrichment path still resting
-  on a fixture written alongside the code it checks. The domain endpoint and item 5's
-  15-second pacer were confirmed in the same run. See
+- [ ] Confirm VirusTotal's base64 URL identifier with a live call, against a key with
+  quota available. The 2026-08-20 run reached VirusTotal but its quota was exhausted, so
+  both URL attempts returned HTTP 429 before the identifier was evaluated. The encoding
+  itself is now pinned to the worked example in VirusTotal's own v3 URL documentation
+  rather than to a value our code produced, which closes the circularity: the previous
+  test would have passed under padded standard base64, because its 24-byte URL needs no
+  padding and contains no `+` or `/`. What remains unproven is only that the live API
+  accepts the documented form. The domain endpoint and item 5's 15-second pacer were
+  confirmed in the same run. See
   [`examples/live-enrichment/README.md`](examples/live-enrichment/README.md).
 
 - [ ] Add a dedicated formal compliance-audit mode instead of relying on `user_input`
