@@ -1,0 +1,117 @@
+{
+  "id": 9101,
+  "name": "Synthetic enrichment verification case",
+  "label": "events",
+  "container_type": "default",
+  "status": "new",
+  "severity": "low",
+  "description": "Synthetic case built solely to exercise enrichment against live providers. Every observable is a public, non-sensitive value chosen for what it tests; none came from a real investigation.",
+  "create_time": "2026-08-20T12:00:00Z",
+  "update_time": "2026-08-20T12:00:00Z",
+  "tags": ["synthetic", "enrichment-verification"],
+  "child_containers": [
+    {
+      "id": 9102,
+      "name": "Observables",
+      "container_type": "default",
+      "parent_container": 9101,
+      "severity": "low",
+      "artifacts": [
+        {
+          "name": "Sharp-s IDN, transitional vs non-transitional",
+          "type": "network",
+          "cef": {
+            "destinationDnsDomain": "straße.de",
+            "deviceDnsDomain": "faß.de"
+          },
+          "cef_types": {
+            "destinationDnsDomain": ["domain"],
+            "deviceDnsDomain": ["domain"]
+          },
+          "notes": [
+            {
+              "title": "Why these",
+              "content": "Both readings exist as separate real domains. UTS #46 non-transitional gives xn--strae-oqa.de and xn--fa-hia.de; IDNA2003 transitional gives strasse.de and fass.de, which resolve elsewhere. A live answer therefore discriminates the two standards."
+            }
+          ]
+        },
+        {
+          "name": "Non-ASCII IDN, mixed case and trailing dot",
+          "type": "network",
+          "cef": {
+            "destinationDnsDomain": "BÜCHER.de.",
+            "deviceDnsDomain": "München.DE"
+          },
+          "cef_types": {
+            "destinationDnsDomain": ["domain"],
+            "deviceDnsDomain": ["domain"]
+          }
+        },
+        {
+          "name": "URL carrying credentials, an implied port and mixed case",
+          "type": "network",
+          "cef": {
+            "requestURL": "HTTPS://Admin:hunter2@Bücher.DE:443/Katalog/Suche.php?q=1#frag"
+          },
+          "cef_types": {
+            "requestURL": ["url"]
+          },
+          "notes": [
+            {
+              "title": "Why this",
+              "content": "The userinfo must never reach a provider or the cache. The host must be punycoded and the implied 443 dropped, while the path, query and fragment stay byte-for-byte."
+            }
+          ]
+        },
+        {
+          "name": "Email address",
+          "type": "identity",
+          "cef": {
+            "sourceUserName": "Kontakt@BÜCHER.de"
+          },
+          "cef_types": {
+            "sourceUserName": ["email"]
+          },
+          "notes": [
+            {
+              "title": "Why this",
+              "content": "The address itself must be recorded and never sent to any provider; only its domain part is looked up. RFC 5321 makes the local part case-sensitive, so only the domain half folds."
+            }
+          ]
+        },
+        {
+          "name": "Global public IP",
+          "type": "network",
+          "cef": {
+            "destinationAddress": "8.8.8.8"
+          },
+          "cef_types": {
+            "destinationAddress": ["ip"]
+          },
+          "notes": [
+            {
+              "title": "Why this",
+              "content": "A well-known benign public resolver. Exercises RDAP and AbuseIPDB without disclosing anything sensitive."
+            }
+          ]
+        },
+        {
+          "name": "Private address",
+          "type": "network",
+          "cef": {
+            "sourceAddress": "10.42.0.7"
+          },
+          "cef_types": {
+            "sourceAddress": ["ip"]
+          },
+          "notes": [
+            {
+              "title": "Why this",
+              "content": "Not globally routable, so no reputation provider should be contacted for it."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

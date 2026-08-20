@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, NamedTuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import SplitResult, quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import idna
@@ -749,12 +749,17 @@ def _validate_url(candidate: str) -> _Validated:
     except ValueError:
         return _Validated(False, candidate)
     scheme = parts.scheme.casefold()
-    unicode_form = candidate if not candidate.isascii() else ""
+    # Before anything else, so that no branch below can hand back the credential: an invalid
+    # URL is still recorded, and `unicode_form` is still shown to the analyst and sent to the
+    # model, so stripping only the value that reaches a provider would leave the secret in
+    # the report by another route.
+    redacted = _without_userinfo(candidate, parts)
+    unicode_form = redacted if not redacted.isascii() else ""
     if scheme not in _URL_SCHEMES or not host:
-        return _Validated(False, candidate, unicode_form)
+        return _Validated(False, redacted, unicode_form)
     normalized_host = _validate_host(host)
     if not normalized_host:
-        return _Validated(False, candidate, unicode_form)
+        return _Validated(False, redacted, unicode_form)
     netloc = normalized_host
     if port is not None and port != _DEFAULT_PORTS[scheme]:
         netloc = f"{netloc}:{port}"
@@ -763,6 +768,22 @@ def _validate_url(candidate: str) -> _Validated:
         urlunsplit((scheme, netloc, parts.path or "/", parts.query, parts.fragment)),
         unicode_form,
     )
+
+
+def _without_userinfo(candidate: str, parts: SplitResult) -> str:
+    """`candidate` with any `user:password@` removed and everything else exactly as written.
+
+    The rest is spliced rather than rebuilt so the original scheme case, host spelling, and
+    path stay byte-for-byte: this string is what the analyst is shown as the value the case
+    actually contained, and a rebuild through `urlunsplit` would quietly lowercase the
+    scheme. `parts.netloc` is what decides whether userinfo is present, because it ends at
+    the first `/`, `?`, or `#` — an `@` inside a query string is not a credential.
+    """
+    if "@" not in parts.netloc:
+        return candidate
+    head_length = len(parts.scheme) + len("://")
+    tail = candidate[head_length + len(parts.netloc) :]
+    return candidate[:head_length] + parts.netloc.rpartition("@")[2] + tail
 
 
 def _validate_email(candidate: str) -> _Validated:

@@ -458,6 +458,38 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(checked.valid)
         self.assertEqual("https://evil.test/payload.bin", checked.value)
         self.assertNotIn("hunter2", checked.value)
+        self.assertNotIn("hunter2", checked.unicode_form)
+
+    def test_credentials_are_stripped_from_the_unicode_form_too(self):
+        """Found by a live run: stripping only the looked-up value is not enough.
+
+        `unicode_form` is populated from the original text so an analyst can read the
+        host the case actually wrote, and it is recorded in the report and sent to the
+        model. Taking it from the raw candidate put the password back into both, and no
+        offline test caught it because the field is empty for an ASCII URL — the leak
+        needed a URL that was internationalized *and* credential-bearing.
+        """
+        checked = _validate("url", "HTTPS://Admin:hunter2@B\u00fccher.DE:443/Katalog/Suche.php?q=1")
+
+        self.assertEqual("https://xn--bcher-kva.de/Katalog/Suche.php?q=1", checked.value)
+        # Scheme case and host spelling survive: this is what the case wrote, minus the secret.
+        self.assertEqual("HTTPS://B\u00fccher.DE:443/Katalog/Suche.php?q=1", checked.unicode_form)
+        self.assertNotIn("hunter2", checked.unicode_form)
+
+    def test_credentials_are_stripped_from_an_invalid_url_as_well(self):
+        """An unusable URL is still recorded, so it must not carry the secret either."""
+        checked = _validate("url", "sftp://admin:hunter2@\u0431\u0430\u043d\u043a.test/x")
+
+        self.assertFalse(checked.valid)
+        self.assertNotIn("hunter2", checked.value)
+        self.assertNotIn("hunter2", checked.unicode_form)
+
+    def test_an_at_sign_outside_the_authority_is_not_userinfo(self):
+        """`netloc` ends at the first `/`, `?` or `#`, so a query-string `@` is left alone."""
+        checked = _validate("url", "https://\u0430pple.com/r?contact=user@example.test")
+
+        self.assertEqual("https://xn--pple-43d.com/r?contact=user@example.test", checked.value)
+        self.assertEqual("https://\u0430pple.com/r?contact=user@example.test", checked.unicode_form)
 
     def test_a_unicode_url_is_encoded_to_its_punycode_host(self):
         checked = _validate("url", "http://\u0430pple.com/login")

@@ -97,8 +97,11 @@ scheme and host are lowercased, the host is punycoded, a port the scheme already
 is dropped, and an empty path becomes `/`. The path, query, and fragment are preserved
 exactly as the case wrote them. **Userinfo is removed** — a URL carrying
 `user:password@` would otherwise send that credential to a third-party API and write it
-to the on-disk cache in the clear. The original text stays reachable through
-`source_paths`. Only `http`, `https`, and `ftp` URLs are treated as valid; anything else
+to the on-disk cache in the clear. It is removed from `unicode_values` and from the
+recorded value of an *invalid* URL as well, since both are saved in the report and sent
+to the model; an `@` inside a query string is not treated as userinfo. The original text
+stays reachable through `source_paths` — which means a case export that embeds a
+credential still carries it into the model payload under `source_data`. Only `http`, `https`, and `ftp` URLs are treated as valid; anything else
 is recorded as invalid rather than sent to a provider that cannot answer for it. For an
 email address, the domain half is normalized exactly as a domain observable is and the
 local part is left alone, since RFC 5321 makes it case-sensitive.
@@ -112,7 +115,10 @@ else may own. `value` is always the punycode form; `unicode_values` lists the no
 spellings the case used, and is empty when the case wrote the name in ASCII. Treat that
 list as provenance rather than a verdict: two confusable spellings still look identical
 in it, so the reliable signal that a name was not plain ASCII is the `xn--` prefix on
-`value`.
+`value`. This was confirmed against live DNS on 2026-08-20: both readings of `straße.de`
+and `faß.de` exist as separate registered domains resolving to different addresses, so
+the lookup discriminates the two standards rather than merely accepting either. See
+[`examples/live-enrichment/`](examples/live-enrichment/README.md).
 
 The generated data is kept separately under
 `case.case_analyzer_enrichment.observations`; imported artifacts, notes, comments, and

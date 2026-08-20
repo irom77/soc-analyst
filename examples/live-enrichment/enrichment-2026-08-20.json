@@ -1,0 +1,256 @@
+{
+  "generated_at": "2026-08-20T11:36:12.612976Z",
+  "observations": [
+    {
+      "observable_type": "domain",
+      "value": "xn--bcher-kva.de",
+      "valid": true,
+      "unicode_values": [
+        "BÜCHER.de",
+        "bücher.de"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[1].cef.destinationDnsDomain",
+        "source_data.child_containers[0].artifacts[2].cef.requestURL#host",
+        "source_data.child_containers[0].artifacts[3].cef.sourceUserName#domain"
+      ],
+      "provider": "cloudflare-dns",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "dns_status": 0,
+        "authenticated_data": false,
+        "answers": [
+          {
+            "type": 1,
+            "ttl": 300,
+            "data": "104.21.33.153"
+          },
+          {
+            "type": 1,
+            "ttl": 300,
+            "data": "172.67.146.137"
+          }
+        ]
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "domain",
+      "value": "xn--fa-hia.de",
+      "valid": true,
+      "unicode_values": [
+        "faß.de"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.deviceDnsDomain"
+      ],
+      "provider": "cloudflare-dns",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "dns_status": 0,
+        "authenticated_data": false,
+        "answers": [
+          {
+            "type": 1,
+            "ttl": 300,
+            "data": "144.76.59.138"
+          }
+        ]
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "domain",
+      "value": "xn--mnchen-3ya.de",
+      "valid": true,
+      "unicode_values": [
+        "München.DE"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[1].cef.deviceDnsDomain"
+      ],
+      "provider": "cloudflare-dns",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "dns_status": 0,
+        "authenticated_data": false,
+        "answers": [
+          {
+            "type": 1,
+            "ttl": 86400,
+            "data": "194.246.166.100"
+          }
+        ]
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "domain",
+      "value": "xn--strae-oqa.de",
+      "valid": true,
+      "unicode_values": [
+        "straße.de"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[0].cef.destinationDnsDomain"
+      ],
+      "provider": "cloudflare-dns",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "dns_status": 0,
+        "authenticated_data": false,
+        "answers": [
+          {
+            "type": 1,
+            "ttl": 150,
+            "data": "81.169.145.78"
+          }
+        ]
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "ip",
+      "value": "8.8.8.8",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[4].cef.destinationAddress"
+      ],
+      "provider": "rdap",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "rdap_authority": "rdap.arin.net",
+        "rdap_source": "iana-bootstrap",
+        "handle": "NET-8-8-8-0-2",
+        "name": "GOGL",
+        "type": "DIRECT ALLOCATION",
+        "start_address": "8.8.8.0",
+        "end_address": "8.8.8.255",
+        "country": null
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "not_comparable",
+        "explanation": "DNS and registration facts do not express reputation and cannot confirm or contradict existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "ip",
+      "value": "8.8.8.8",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[4].cef.destinationAddress"
+      ],
+      "provider": "abuseipdb",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "found",
+      "details": {
+        "abuse_confidence_score": 0,
+        "total_reports": 121,
+        "last_reported_at": "2026-08-20T06:11:25+00:00",
+        "is_whitelisted": true,
+        "country_code": "US",
+        "usage_type": "Content Delivery Network",
+        "isp": "Google LLC",
+        "domain": "google.com",
+        "report_window_days": 30
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "AbuseIPDB reputation is recorded separately and is not used to overwrite or automatically resolve existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "email",
+      "value": "Kontakt@xn--bcher-kva.de",
+      "valid": true,
+      "unicode_values": [
+        "Kontakt@BÜCHER.de"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[3].cef.sourceUserName"
+      ],
+      "provider": "local-validation",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "skipped",
+      "details": {
+        "reason": "No provider configured here looks up email addresses. The domain part is enriched as its own observable, whose source path carries a `#domain` suffix."
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "No provider lookup was performed for this value, so nothing was retrieved to compare with existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "ip",
+      "value": "10.42.0.7",
+      "valid": true,
+      "unicode_values": [],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[5].cef.sourceAddress"
+      ],
+      "provider": "rdap",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "skipped",
+      "details": {
+        "reason": "RDAP lookup skipped for a non-global IP address"
+      },
+      "artifact_context": [
+        "Why this Not globally routable, so no reputation provider should be contacted for it."
+      ],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "No provider lookup was performed for this value, so nothing was retrieved to compare with existing case conclusions."
+      }
+    },
+    {
+      "observable_type": "url",
+      "value": "https://xn--bcher-kva.de/Katalog/Suche.php?q=1#frag",
+      "valid": true,
+      "unicode_values": [
+        "HTTPS://Bücher.DE:443/Katalog/Suche.php?q=1#frag"
+      ],
+      "source_paths": [
+        "source_data.child_containers[0].artifacts[2].cef.requestURL"
+      ],
+      "provider": "local-validation",
+      "retrieved_at": "2026-08-20T11:36:12.612976Z",
+      "lookup_status": "skipped",
+      "details": {
+        "reason": "The URLhaus API requires an abuse.ch Auth-Key; set ABUSE_CH_AUTH_KEY to look up URLs. VirusTotal covers URLs as well when its own key is configured, and the host part is enriched as its own observable either way."
+      },
+      "artifact_context": [],
+      "comparison_with_case": {
+        "status": "inconclusive",
+        "explanation": "No provider lookup was performed for this value, so nothing was retrieved to compare with existing case conclusions."
+      }
+    }
+  ],
+  "truncated": false,
+  "stopped_early": false
+}
