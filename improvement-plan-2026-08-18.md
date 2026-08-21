@@ -1,12 +1,12 @@
 # Improvement Plan — 2026-08-18
 
-Status: **updated 2026-08-21.** Every item here is implemented and measured except
-Tier 4 item 11 (context-overflow strategy), which stays propose-and-discuss — its own
-advice is to wait until someone actually hits the input limit. Two qualifications ride
-on finished items: item 8's control record shape is still provisional pending a real
-policy export, and item 10 leaves a cross-spelling duplication it deliberately does not
-chase. Each item carries its own progress note, and "Suggested sequencing" at the end
-has the chronology.
+Status: **closed 2026-08-21.** Items 1–10 are implemented and measured. Item 11 is
+closed deferred rather than built, for the reasons recorded under it. Two qualifications
+ride on finished items: item 8's control record shape is still provisional pending a
+real policy export, and item 10 leaves a cross-spelling duplication it deliberately does
+not chase. Each item carries its own progress note, and "Suggested sequencing" at the
+end has the chronology. Work that outlived this plan is tracked in
+[`TODO.md`](TODO.md).
 
 - **Done — eval harness.** `case-analyzer-evals` with `evals/manifest.json` (the
   three reasoning cases, the ip-verdict audit case, and two new prompt-injection
@@ -484,13 +484,40 @@ than dropping `source_data` (the model genuinely uses it), send only the source 
 normalizer did not already lift, or a diff-style residue. Trickiest change to make safely —
 measure token savings on the recorded examples before committing to it.
 
-### 11. Context-overflow strategy
+### 11. Context-overflow strategy — DEFERRED (2026-08-21), not built
 
 For cases over `--max-input-bytes`, an explicit `--truncate-strategy` (e.g. drop
 oldest timeline entries first, cap artifact bodies) that **records what was dropped**
 in the provenance block — never silent. A two-pass summarize-then-analyze mode is the
 alternative; hold off until someone actually hits the limit, since a second LLM call
 changes the cost model.
+
+Deferred on its own advice, and on a measurement. `--max-input-bytes` defaults to
+5,000,000; the largest case in the repo is `examples/unknown.json` at 15,149 bytes, and
+the envelope work on 2026-08-21 cut what that case actually sends. Nothing in the corpus
+comes within two orders of magnitude of the limit, so any strategy built now would be
+tuned against a fixture invented to trip it.
+
+**The item also names the wrong limit, which is the reason to leave it unbuilt rather
+than build it early.** `--max-input-bytes` is enforced in `_json_file` against
+`path.stat().st_size`, before the file is parsed — file bytes, not payload tokens. The
+overflow anyone actually meets first is a payload that fits in 5 MB and exceeds the
+model's context window, which arrives as a provider `BadRequestError` and is sanitized
+in `analyzer.py`. A `--truncate-strategy` attached to the file-size check would not
+prevent it. Whoever picks this up should reopen it at payload assembly, where
+`--reduce-source-data` already has a tested seam, not at the file read.
+
+Two decisions to make before any code, recorded so they are not rediscovered:
+
+- **Where the record goes.** Not `truncated_fields`. That is the model's own account of
+  lists it shortened, cross-checked against `LIST_CAPS` by `inconsistent_truncation` in
+  `checks.py`. Input *we* dropped is a different fact with a different trust level —
+  ours, and verifiable — so it belongs in item 1's provenance block. Mixing the two
+  makes the post-check ambiguous about what it is checking.
+- **What "drop oldest timeline entries first" costs.** The oldest entries are where the
+  initial-access evidence sits, which is what an attack-chain reconstruction leans on.
+  Defensible as a default only if the provenance note is loud, and it needs an oversized
+  eval case and a benchmark run to show a truncated case still reasons.
 
 ## Deliberately out of scope
 
@@ -553,12 +580,15 @@ canonical fields to 7 and its reduction to 35.4%
 ([`evals/envelope-normalization-2026-08-21.md`](evals/envelope-normalization-2026-08-21.md)).
 About 1,500 characters of cross-spelling duplication in `raw.content` are knowingly left.
 
-**What remains: Tier 4 item 11 only**, and it stays propose-and-discuss — the plan's own
-advice is to wait until someone actually hits the input limit, and the envelope
-follow-up removed the largest single reason a payload here was bigger than it needed to
-be. Blocked rather than open: a live `--audit` run against a real policy export, which
-needs a real policy. Outside this plan, `TODO.md` still carries the remaining provider
-evaluation (ThreatFox, GreyNoise Community), which item 7 deliberately left alone.
+Item 11 (2026-08-21): closed deferred, not built. The corpus is two orders of magnitude
+below the limit it addresses, and the item points at file bytes where the real overflow
+is payload tokens — so the design pass has to move before the code is worth writing.
+Reasoning and the two open decisions are under the item.
+
+**Nothing in this plan remains open.** Two things it produced are unfinished and live in
+`TODO.md` instead: a live `--audit` run against a real policy export, blocked on having
+a real policy, and the provider evaluation item 7 deliberately left alone (ThreatFox,
+GreyNoise Community).
 
 ## Review — to be verified before implementation
 
