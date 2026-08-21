@@ -79,8 +79,11 @@ from failing a good answer.
 
 ## What this does not establish
 
-- **One sample per case.** Nothing here measures stability. `--samples 3` would report
-  agreement across samples; it has not been run.
+- **One sample per case.** Nothing here measures stability. ~~`--samples 3` would report
+  agreement across samples; it has not been run.~~ Closed on 2026-08-21: three samples per
+  audit case agreed on every control, with the same citations. See
+  [`audit-stability-2026-08-21.md`](audit-stability-2026-08-21.md). Every other limitation
+  below still stands.
 - **One model.** `gemini-2.5-flash` only.
 - **The control set was written for the benchmark.** It does not show that a real policy
   export parses without reshaping, which is the other half of the open item and the reason

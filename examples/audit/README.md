@@ -118,9 +118,11 @@ change silently:
   mode shipped offline first — schema, validation, coverage check, prompt, and preview —
   matching how `--summary` was rolled out. Live behavior is measured separately by the
   three audit cases in the eval benchmark; the first run is recorded in
-  [`../../evals/audit-mode-2026-08-20.md`](../../evals/audit-mode-2026-08-20.md). One
-  sample, one model, three cases, and a control set written for the benchmark rather than
-  taken from a real policy.
+  [`../../evals/audit-mode-2026-08-20.md`](../../evals/audit-mode-2026-08-20.md), and a
+  three-sample re-run in
+  [`../../evals/audit-stability-2026-08-21.md`](../../evals/audit-stability-2026-08-21.md)
+  found 100% agreement on every control. Still one model, three cases, and a control set
+  written for the benchmark rather than taken from a real policy.
 - The result is decision support for a human reviewer. It does not close a case, clear a
   control, or write back to any source platform, by design.
 - Enrichment cannot evidence a process control. `case.case_analyzer_enrichment` describes

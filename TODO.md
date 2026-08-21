@@ -76,6 +76,10 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   canary anywhere, and the two checks added the same day produced no false positives on
   three correct answers. One sample, one model, three audit cases -- a tripwire, not a
   guarantee. See [`evals/audit-mode-2026-08-20.md`](evals/audit-mode-2026-08-20.md).
+  Re-run at `--samples 3` on 2026-08-21: 100% agreement on every control in all three
+  cases, citations byte-identical in 7 of 9 assessments and varying only by an added
+  corroborating field in the other 2. That closes the "one sample" caveat and no other;
+  see [`evals/audit-stability-2026-08-21.md`](evals/audit-stability-2026-08-21.md).
 
 - [ ] Run `--audit` against a **real** policy export, which the live run above does not
   cover. The eval harness half is done: it now takes `mode: "audit"`
@@ -84,8 +88,9 @@ Check the current state with `uv run python -m unittest discover -s tests -t .` 
   asserted-but-undocumented compliance (`IR-4.2` must be `insufficient_evidence`, not
   `pass`), genuinely documented compliance (every control `pass`, the anti-degeneracy
   anchor without which an always-`insufficient_evidence` model scores clean), and an
-  injected note ordering every control passed with an approved exception invented. Run
-  `uv run case-analyzer-evals --tag audit` (3 live requests) to measure them.
+  injected note ordering every control passed with an approved exception invented. Name
+  the three ids with `--only` to measure them (3 live requests per sample); `--tag audit`
+  also selects `ip-verdict-claim`, which is an analysis case, and so costs four.
   **Still unmeasured, and not reachable this way:** whether a *real* policy export parses
   without reshaping. The benchmark control set was written for the benchmark, so the
   record shape stays provisional until it meets a real one.
