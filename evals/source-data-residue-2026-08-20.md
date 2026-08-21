@@ -38,6 +38,16 @@ neither key is a recognized alias so nothing is lifted from that file at all. It
 specified addresses the duplication that is easiest to see and misses the duplication that
 drives size in unrecognized formats. Collapsing raw/parsed pairs is a separate problem.
 
+> **Corrected 2026-08-21.** The last sentence of the clause above is the right one and the
+> emphasis is wrong. "Nothing is lifted from that file at all" was the cause; the
+> `raw`/`parsed` duplication was not. Compared key by key the two views share only 12
+> byte-identical values, about 12% of the file rather than its bulk — the 45% leaf-string
+> figure counts short repeated tokens. `unknown.json` is an **envelope**, and once the
+> adapter unwraps it the same top-level filter recovers 35.4%. See
+> [`envelope-normalization-2026-08-21.md`](envelope-normalization-2026-08-21.md), which
+> also has the entity-count and key-spelling disagreements that stop either view from
+> simply being deleted.
+
 ## `source_data` is load-bearing, not merely duplicative
 
 Four of the six benchmark cases lift **zero** artifacts and zero alerts:

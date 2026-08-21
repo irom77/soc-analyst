@@ -446,9 +446,13 @@ changed the shape of the item in three ways:
 - The 1.52x figure understates the duplication and overstates the saving. `source_data` is
   75% of the payload across the recorded examples, but residue recovers only 14% of those
   characters — 25.7% on the benchmark corpus, 23% on `splunk-soar.json`, and **1%** on
-  `unknown.json`, the largest payload, whose bulk is a `raw`/`parsed` pair duplicated
-  *inside* `source_data` where a top-level filter cannot see it. Collapsing those pairs is
-  a separate problem, not this one.
+  `unknown.json`, the largest payload. Followed up on 2026-08-21, which corrected the
+  reading: the `raw`/`parsed` pair is 12% of that file rather than its bulk, and the 1%
+  was because the case is an **envelope** the generic adapter could not lift anything from
+  — 0 of 10 canonical fields filled. Normalization now unwraps it and the residue trims at
+  the depth the adapter read from, taking that case to 7 of 10 fields and a 35.4% cut with
+  every other example byte-identical. See
+  [`evals/envelope-normalization-2026-08-21.md`](evals/envelope-normalization-2026-08-21.md).
 - "The model genuinely uses it" is truer than the parenthetical suggests. Four of the six
   benchmark cases lift zero artifacts and zero alerts; their evidence sits in
   `child_containers`, which no adapter descends into. Dropping `source_data` outright would
@@ -523,8 +527,8 @@ the one enrichment path still resting on a fixture and needs a key with quota av
 What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
 real control set before any code. Item 10 landed opt-in on 2026-08-20; Tier 4 item 11
 remains propose-and-discuss, and the plan's own advice on it is to wait until someone
-actually hits the input limit — though item 10's measurement found the raw/parsed
-duplication inside `source_data` that would matter most if they did. Outside
+actually hits the input limit — the envelope follow-up on 2026-08-21 removed the largest
+single reason a payload here was bigger than it needed to be. Outside
 this plan, `TODO.md` still carries the remaining provider evaluation (ThreatFox,
 GreyNoise Community), which item 7 deliberately left alone.
 

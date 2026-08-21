@@ -86,6 +86,11 @@ class CanonicalCase(BaseModel):
     # internal fact about parsing, not evidence. `source` cannot answer this: it holds
     # whatever the export called its own product, so a generic case can say "splunk".
     _source_format: str = PrivateAttr(default="")
+    # Where inside `source_data` the adapter actually read the case from, empty unless an
+    # envelope was unwrapped. Private for the same reason as `_source_format`, and used by
+    # `source_data_residue` to apply the consumed-key rule at the depth the lift happened
+    # instead of only at the top level.
+    _unwrapped_path: tuple[str, ...] = PrivateAttr(default=())
 
 
 class CaseSummary(BaseModel):

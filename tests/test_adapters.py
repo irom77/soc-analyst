@@ -1,3 +1,4 @@
+import json
 import pathlib
 import re
 import unittest
@@ -197,12 +198,229 @@ class SourceDataResidueTests(unittest.TestCase):
         silently undoing the saving for that field.
         """
         source = pathlib.Path(adapters.__file__).read_text(encoding="utf-8")
-        for adapter_name, marker in (("generic", "def _generic"), ("soar", "def _soar")):
+        for adapter_name, marker in (("generic", "def _generic_record"), ("soar", "def _soar")):
             body = source[source.index(marker) :]
             body = body[: body.index("source_data=dict(data)")]
-            quoted = set(re.findall(r'_first\(\s*data,\s*([^)]*?)(?:,\s*default=[^)]*)?\)', body))
+            quoted = set(
+                re.findall(r'_first\(\s*(?:data|record),\s*([^)]*?)(?:,\s*default=[^)]*)?\)', body)
+            )
             names = {name.strip().strip('"\'') for group in quoted for name in group.split(",")}
-            names |= {match for match in re.findall(r'data\.get\("([a-z_]+)"\)', body)}
+            names |= {match for match in re.findall(r'(?:data|record)\.get\("([a-z_]+)"\)', body)}
             names.discard("")
             missing = names - CONSUMED_SOURCE_KEYS[adapter_name]
             self.assertEqual(set(), missing, f"{adapter_name} alias keys missing from CONSUMED_SOURCE_KEYS")
+
+
+class EnvelopeUnwrapTests(unittest.TestCase):
+    """A case wrapped in an envelope is normalized from the record inside it.
+
+    `examples/unknown.json` is `{id, name, type, parsed, raw}`: the platform's normalized
+    view and the original record, with only identity at the top level. Before this, the
+    generic adapter filled two of thirteen fields and everything the case said stayed
+    buried in `source_data` -- the largest example here, and the only one that normalized
+    to nothing.
+    """
+
+    WRAPPED = {
+        "id": "4d03",
+        "name": "Suspicious OAuth token activity",
+        "parsed": {
+            "title": "Suspicious OAuth token activity",
+            "description": "A token was minted for the CFO account.",
+            "severity": "HIGH",
+            "status": "NEW",
+            "createdAt": "2026-08-05T18:19:55Z",
+            "entities": [{"entityType": "USER", "identifier": "jwhitfield"}],
+        },
+    }
+
+    def test_a_wrapped_case_is_normalized_from_the_inner_record(self):
+        case = normalize_case(self.WRAPPED)
+
+        self.assertEqual(("parsed",), case._unwrapped_path)
+        self.assertEqual("A token was minted for the CFO account.", case.description)
+        self.assertEqual("HIGH", case.severity)
+        self.assertEqual("NEW", case.status)
+        self.assertEqual("2026-08-05T18:19:55Z", case.created_at)
+        self.assertEqual([{"entityType": "USER", "identifier": "jwhitfield"}], case.artifacts)
+
+    def test_identity_falls_back_to_the_outer_record(self):
+        """The wrapper keeps the id; the inner view usually has only a title."""
+        case = normalize_case(self.WRAPPED)
+
+        self.assertEqual("4d03", case.case_id)
+        self.assertEqual("Suspicious OAuth token activity", case.title)
+
+    def test_source_data_still_holds_the_whole_export(self):
+        """Enrichment walks `source_data` and roots every `source_paths` value there."""
+        case = normalize_case(self.WRAPPED)
+
+        self.assertEqual(self.WRAPPED, case.source_data)
+
+    def test_a_case_with_content_at_the_top_level_is_never_unwrapped(self):
+        """The trigger is a top level with no content at all.
+
+        This is what makes the change safe for every export that normalizes today: a case
+        that fills even one content field takes the same path it always did, whatever it
+        happens to carry underneath.
+        """
+        case = normalize_case(
+            {
+                "id": "1",
+                "name": "Case",
+                "description": "the real one",
+                "attachment": {
+                    "description": "a richer nested record",
+                    "severity": "high",
+                    "status": "open",
+                    "tags": ["a"],
+                    "comments": [{"c": 1}],
+                },
+            }
+        )
+
+        self.assertEqual((), case._unwrapped_path)
+        self.assertEqual("the real one", case.description)
+
+    def test_the_record_is_found_two_levels_down(self):
+        case = normalize_case(
+            {
+                "id": "1",
+                "name": "Case",
+                "raw": {
+                    "uid": "1",
+                    "content": {
+                        "description": "d",
+                        "severity": "high",
+                        "status": "new",
+                        "comments": [{"c": 1}],
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(("raw", "content"), case._unwrapped_path)
+        self.assertEqual("d", case.description)
+
+    def test_a_nested_body_carrying_a_field_or_two_is_not_mistaken_for_the_case(self):
+        """An artifact body can hold a `description` and a `status` without being the case.
+
+        The floor is what separates the two, so a hollow case stays hollow rather than
+        being normalized from the wrong record -- which would be worse than not
+        normalizing it, because the result would look complete.
+        """
+        case = normalize_case(
+            {"id": "1", "name": "Case", "detail": {"description": "a file", "status": "seen"}}
+        )
+
+        self.assertEqual((), case._unwrapped_path)
+        self.assertEqual("", case.description)
+
+    def test_the_shallowest_of_equally_good_records_wins(self):
+        inner = {"description": "d", "severity": "high", "status": "new"}
+        case = normalize_case({"id": "1", "name": "C", "parsed": inner, "raw": {"content": inner}})
+
+        self.assertEqual(("parsed",), case._unwrapped_path)
+
+    def test_mapping_tags_do_not_reach_the_payload_as_python_reprs(self):
+        case = normalize_case(
+            {
+                "id": "1",
+                "name": "C",
+                "parsed": {
+                    "description": "d",
+                    "severity": "high",
+                    "status": "new",
+                    "tags": [{"key": "SOURCE", "value": "manual"}, {"name": "bare"}, "plain"],
+                },
+            }
+        )
+
+        self.assertEqual(["SOURCE: manual", "bare", "plain"], case.tags)
+
+    def test_the_recorded_examples_keep_their_shape(self):
+        """Only the envelope example changes; the other three must take the old path."""
+        root = pathlib.Path(adapters.__file__).parents[2] / "examples"
+        expected = {
+            "generic-case.json": (),
+            "other-soar-case.json": (),
+            "splunk-soar.json": (),
+            "unknown.json": ("parsed",),
+        }
+        for name, path in expected.items():
+            with self.subTest(name):
+                data = json.loads((root / name).read_text(encoding="utf-8"))
+                self.assertEqual(path, normalize_case(data)._unwrapped_path)
+
+    def test_every_content_alias_is_listed_as_consumed(self):
+        """The scoring table and the residue key set must name the same fields.
+
+        An alias scored here but not consumed would be lifted out of the envelope and then
+        resent inside it, which is the duplication this whole path exists to remove.
+        """
+        names = {name for group in adapters._GENERIC_CONTENT_ALIASES for name in group}
+
+        self.assertEqual(set(), names - CONSUMED_SOURCE_KEYS["generic"])
+
+
+class UnwrappedResidueTests(unittest.TestCase):
+    """`--reduce-source-data` applies its rule at the depth the adapter actually read."""
+
+    WRAPPED = {
+        "id": "1",
+        "name": "Case",
+        "type": "incident",
+        "parsed": {
+            "description": "d",
+            "severity": "high",
+            "status": "new",
+            "entities": [{"identifier": "8.8.8.8"}],
+            "verdict": "UNKNOWN",
+        },
+        "raw": {"content": {"uid": "1", "techniques": ["T1078"]}},
+    }
+
+    def test_the_lifted_keys_are_dropped_from_the_record_they_came_from(self):
+        residue = source_data_residue(normalize_case(self.WRAPPED))
+
+        self.assertNotIn("description", residue["parsed"])
+        self.assertNotIn("entities", residue["parsed"])
+
+    def test_what_the_envelope_carries_but_no_adapter_lifts_survives(self):
+        """Trimming key by key rather than dropping the subtree is the point.
+
+        `verdict` is inside the record the adapter read from but is not a field any adapter
+        lifts, so dropping `parsed` wholesale would delete it from the payload.
+        """
+        residue = source_data_residue(normalize_case(self.WRAPPED))
+
+        self.assertEqual("UNKNOWN", residue["parsed"]["verdict"])
+
+    def test_the_second_view_of_the_record_is_kept(self):
+        """`raw` is a different view, not a copy of what was sent.
+
+        It carries fields the normalized view omits, and the adapter never read from it, so
+        the consumed-key rule has nothing to say about it.
+        """
+        residue = source_data_residue(normalize_case(self.WRAPPED))
+
+        self.assertEqual({"uid": "1", "techniques": ["T1078"]}, residue["raw"]["content"])
+
+    def test_trimming_does_not_touch_the_stored_case(self):
+        """The residue shares the caller's nested objects until it copies them."""
+        case = normalize_case(self.WRAPPED)
+
+        source_data_residue(case)
+
+        self.assertEqual("d", case.source_data["parsed"]["description"])
+        self.assertEqual(self.WRAPPED, case.source_data)
+
+    def test_an_unwrapped_case_reduces_like_any_other(self):
+        """The measured symptom: this shape recovered 1.1% where every other case recovers
+        a quarter to two fifths of the payload."""
+        case = normalize_case(self.WRAPPED)
+
+        whole = len(json.dumps(case.source_data))
+        residue = len(json.dumps(source_data_residue(case)))
+
+        self.assertLess(residue, whole * 0.75)
