@@ -1,7 +1,12 @@
 # Improvement Plan — 2026-08-18
 
-Status: **updated 2026-08-18 after the eval-harness branch**. Two things changed
-since the draft: the eval prerequisite and the injection item are done and measured.
+Status: **updated 2026-08-21.** Every item here is implemented and measured except
+Tier 4 item 11 (context-overflow strategy), which stays propose-and-discuss — its own
+advice is to wait until someone actually hits the input limit. Two qualifications ride
+on finished items: item 8's control record shape is still provisional pending a real
+policy export, and item 10 leaves a cross-spelling duplication it deliberately does not
+chase. Each item carries its own progress note, and "Suggested sequencing" at the end
+has the chronology.
 
 - **Done — eval harness.** `case-analyzer-evals` with `evals/manifest.json` (the
   three reasoning cases, the ip-verdict audit case, and two new prompt-injection
@@ -420,9 +425,16 @@ it cannot drift silently:
 What that leaves unproven is what the offline suite cannot reach: whether a real control
 set parses without reshaping, and whether the model actually holds the
 `fail`/`insufficient_evidence` line under a case whose text asserts its own compliance.
-The prompt addresses the second and the injection hardening from item 9 applies, but
-neither has been measured here. A live run against a real control set is the next step,
-and the eval harness has no audit cases yet.
+The prompt addresses the second and the injection hardening from item 9 applies.
+
+The second is now measured. The eval harness carries three `mode: audit` cases, and the
+asserted-compliance one held `insufficient_evidence` on IR-4.2 — the control its text
+claims and does not evidence — in every sample of both live runs, alongside the injected
+exception order being refused. Three samples is a stronger tripwire than one, not a
+stability measurement; see
+[`evals/audit-stability-2026-08-21.md`](evals/audit-stability-2026-08-21.md) for the
+limits. **The first is still unproven and cannot be proven without a real policy export
+to run against.** That is the one open piece of item 8.
 
 ## Tier 4 — structural, propose-and-discuss
 
@@ -492,7 +504,9 @@ changes the cost model.
 
 Start with Tier 1: items 1, 3, and 4 are pure additions; item 2 needs only the enum
 value decision. Item 8 deserves its own design pass against a real control set before
-any code. (All of Tier 1 is now done; see the progress note below.)
+any code. (All of Tier 1 is now done, and item 8 shipped on 2026-08-20 — against a
+designed control set rather than a real one, which is the qualification recorded under
+the item. See the progress notes below.)
 
 Progress (2026-08-19): items 3, 4, and 1 are done. Items 3 and 4 were taken first
 because they were the only Tier 1 items with no open review question; item 1 followed
@@ -524,13 +538,27 @@ pacer was then confirmed by wall clock — 7 VirusTotal attempts predicted 93.7s
 took 93.90s — but VirusTotal's quota was exhausted, so item 7's base64 URL identifier is
 the one enrichment path still resting on a fixture and needs a key with quota available.
 
-What remains: Tier 3 item 8 (`--audit` mode) still needs its own design pass against a
-real control set before any code. Item 10 landed opt-in on 2026-08-20; Tier 4 item 11
-remains propose-and-discuss, and the plan's own advice on it is to wait until someone
-actually hits the input limit — the envelope follow-up on 2026-08-21 removed the largest
-single reason a payload here was bigger than it needed to be. Outside
-this plan, `TODO.md` still carries the remaining provider evaluation (ThreatFox,
-GreyNoise Community), which item 7 deliberately left alone.
+Item 8 (2026-08-20): shipped offline, then run live the same day, then measured across
+three samples per case on 2026-08-21 — 100% status agreement on all three audit cases
+([`evals/audit-stability-2026-08-21.md`](evals/audit-stability-2026-08-21.md)). The
+design pass this section originally deferred happened against the requirements in
+`examples/user-input-case-audit/README.md`, not a real control set, which is why the
+record shape is marked provisional under the item.
+
+Item 10 (2026-08-20): landed opt-in behind `--reduce-source-data`. The 2026-08-21
+follow-up found the recorded diagnosis wrong — `examples/unknown.json` recovered only
+1.1% because the adapter lifted nothing from it, not because of the `raw`/`parsed`
+duplication — and normalized the envelope instead, taking that case from 0 of 10
+canonical fields to 7 and its reduction to 35.4%
+([`evals/envelope-normalization-2026-08-21.md`](evals/envelope-normalization-2026-08-21.md)).
+About 1,500 characters of cross-spelling duplication in `raw.content` are knowingly left.
+
+**What remains: Tier 4 item 11 only**, and it stays propose-and-discuss — the plan's own
+advice is to wait until someone actually hits the input limit, and the envelope
+follow-up removed the largest single reason a payload here was bigger than it needed to
+be. Blocked rather than open: a live `--audit` run against a real policy export, which
+needs a real policy. Outside this plan, `TODO.md` still carries the remaining provider
+evaluation (ThreatFox, GreyNoise Community), which item 7 deliberately left alone.
 
 ## Review — to be verified before implementation
 
