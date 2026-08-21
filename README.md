@@ -3,7 +3,8 @@
 Soc Analyst is a standalone agentic security-case analyzer. It runs the Case Analysis LLM workflow without Django, PostgreSQL, or the Agentic SOC worker, normalizes exported security-case JSON to a platform-neutral representation, and returns a structured `InvestigationReport` JSON document.
 
 ```mermaid
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 60}, "themeVariables": {"fontSize": "17px"}}}%%
+flowchart TB
     A["📥 Case export<br/>Generic JSON or Splunk SOAR"] --> B["🔄 Normalize<br/>Canonical Case"]
     B --> C{"🔎 --enrich?"}
     C -- No --> D{"🧪 --dry-run?"}
