@@ -2,6 +2,46 @@
 
 Soc Analyst is a standalone agentic security-case analyzer. It runs the Case Analysis LLM workflow without Django, PostgreSQL, or the Agentic SOC worker, normalizes exported security-case JSON to a platform-neutral representation, and returns a structured `InvestigationReport` JSON document.
 
+```mermaid
+flowchart LR
+    A["📥 Case export<br/>Generic JSON or Splunk SOAR"] --> B["🔄 Normalize<br/>Canonical Case"]
+    B --> C{"🔎 --enrich?"}
+    C -- No --> D{"🧪 --dry-run?"}
+    C -- Yes --> E["Extract + validate<br/>domains · IPs · hashes · URLs · email"]
+
+    E --> F["Keyless enrichment<br/>Cloudflare DNS · RDAP"]
+    E --> G["Optional reputation<br/>VirusTotal · AbuseIPDB · URLhaus"]
+    F --> H["Attach attributed observations<br/>cache · limits · time budget"]
+    G --> H
+    H --> D
+
+    D -- Yes --> I["📋 Preview normalized payload<br/>No LLM API call"]
+    D -- No --> J["Build guarded prompt + JSON schema<br/>investigation · summary · audit"]
+    J --> K["⚡ LiteLLM completion()"]
+    K --> L["Native Gemini API<br/><code>gemini/...</code>"]
+    K --> M["OpenAI-compatible API<br/>provider endpoint or LiteLLM proxy"]
+    L --> N["✅ Validate structured response<br/>post-check + provenance"]
+    M --> N
+    N --> O["📄 JSON result<br/>source case is never modified"]
+
+    classDef input fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef choice fill:#fef3c7,stroke:#d97706,color:#451a03;
+    classDef enrich fill:#dcfce7,stroke:#16a34a,color:#052e16;
+    classDef llm fill:#f3e8ff,stroke:#9333ea,color:#3b0764;
+    classDef output fill:#ffe4e6,stroke:#e11d48,color:#4c0519;
+    class A,B input;
+    class C,D choice;
+    class E,F,G,H enrich;
+    class J,K,L,M llm;
+    class I,N,O output;
+```
+
+Enrichment calls are separate from the LLM call: `--enrich` sends only extracted
+observables to the enabled enrichment providers, then includes their attributed results
+in the canonical case. The full analysis payload reaches an LLM only when `--dry-run` is
+absent. LiteLLM provides one structured-call interface for direct provider APIs,
+OpenAI-compatible gateways, and an optional self-hosted LiteLLM proxy.
+
 For a detailed explanation of the package architecture and execution flow, see the [Case Analyzer code walkthrough](case-analyzer-code.md).
 
 For common questions about evidence handling and generated conclusions, see the [Case Analyzer FAQ](FAQ.md).
